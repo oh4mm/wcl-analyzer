@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import csv
+import io
 import unicodedata
 from datetime import datetime
 
@@ -128,6 +130,47 @@ def format_timeline(analysis: TimelineAnalysis) -> str:
     if cd_block:
         lines.extend(["", cd_block])
     return "\n".join(lines)
+
+
+_DEFENSE_CSV_HEADERS = (
+    "时间",
+    "偏移毫秒",
+    "类别",
+    "玩家",
+    "专精",
+    "职业",
+    "技能",
+    "技能ID",
+    "英文名",
+    "目标",
+)
+
+
+def format_defense_csv(analysis: TimelineAnalysis) -> str:
+    """把减伤 / 药水 / 饰品 / 打断事件写成 CSV（不含首领技能与阶段）。"""
+    buffer = io.StringIO()
+    writer = csv.writer(buffer, lineterminator="\n")
+    writer.writerow(_DEFENSE_CSV_HEADERS)
+    for event in analysis.events:
+        if event.kind != "defense":
+            continue
+        writer.writerow(_defense_csv_cells(event))
+    return buffer.getvalue()
+
+
+def _defense_csv_cells(event: TimelineEvent) -> list[str]:
+    return [
+        format_fight_time(event.offset_ms),
+        str(int(event.offset_ms)),
+        event.category or "",
+        event.actor or "",
+        event.spec or "",
+        event.actor_class or "",
+        event.ability,
+        "" if event.ability_id is None else str(event.ability_id),
+        event.ability_en or "",
+        event.target or "",
+    ]
 
 
 def format_boss_cds(summaries: tuple[BossAbilityCd, ...] | list[BossAbilityCd]) -> str:
