@@ -719,6 +719,11 @@ def test_analyze_timeline_includes_health_series_and_html_scrubber(tmp_path) -> 
     assert "pickHealthSeriesForView" in html
     assert "seriesOverlapsView" in html
     assert "hp-empty" in html
+    # 敌方血条：红底黑槽、名字和整数百分比压在条内，首领顶上有金色星标
+    assert "#b3473e" in html
+    assert "#edcd68" in html
+    assert "hp-item.boss::before" in html
+    assert "Math.round(pct)" in html
     # shownHealthSeries 必须在首次 setupHpPanel 调用之前声明，避免 TDZ 崩掉整页
     js = html.split("<script>", 2)[-1]
     decl = js.index("let shownHealthSeries")
