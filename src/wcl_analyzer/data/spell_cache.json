@@ -1,0 +1,392 @@
+{
+  "642": {
+    "name_zh": "圣盾术",
+    "name_en": "Divine Shield",
+    "icon": "spell_holy_divineshield"
+  },
+  "498": {
+    "name_zh": "圣佑术",
+    "name_en": "Divine Protection",
+    "icon": "spell_holy_divineprotection"
+  },
+  "633": {
+    "name_zh": "圣疗术",
+    "name_en": "Lay on Hands",
+    "icon": "spell_holy_layonhands"
+  },
+  "740": {
+    "name_zh": "宁静",
+    "name_en": "Tranquility",
+    "icon": "spell_nature_tranquility"
+  },
+  "871": {
+    "name_zh": "盾墙",
+    "name_en": "Shield Wall",
+    "icon": "ability_warrior_shieldwall"
+  },
+  "1022": {
+    "name_zh": "保护祝福",
+    "name_en": "Blessing of Protection",
+    "icon": "spell_holy_sealofprotection"
+  },
+  "1966": {
+    "name_zh": "佯攻",
+    "name_en": "Feint",
+    "icon": "ability_rogue_feint"
+  },
+  "5277": {
+    "name_zh": "闪避",
+    "name_en": "Evasion",
+    "icon": "spell_shadow_shadowward"
+  },
+  "586": {
+    "name_zh": "渐隐术",
+    "name_en": "Fade",
+    "icon": "spell_magic_lesserinvisibilty"
+  },
+  "6940": {
+    "name_zh": "牺牲祝福",
+    "name_en": "Blessing of Sacrifice",
+    "icon": "spell_holy_sealofsacrifice"
+  },
+  "6262": {
+    "name_zh": "治疗石",
+    "name_en": "Healthstone",
+    "icon": "warlock_healthstone"
+  },
+  "11426": {
+    "name_zh": "寒冰护体",
+    "name_en": "Ice Barrier",
+    "icon": "spell_ice_lament"
+  },
+  "15286": {
+    "name_zh": "吸血鬼的拥抱",
+    "name_en": "Vampiric Embrace",
+    "icon": "spell_shadow_unsummonbuilding"
+  },
+  "19236": {
+    "name_zh": "绝望祷言",
+    "name_en": "Desperate Prayer",
+    "icon": "spell_holy_restoration"
+  },
+  "22812": {
+    "name_zh": "树皮术",
+    "name_en": "Barkskin",
+    "icon": "spell_nature_stoneclawtotem"
+  },
+  "23920": {
+    "name_zh": "法术反射",
+    "name_en": "Spell Reflection",
+    "icon": "ability_warrior_shieldreflection"
+  },
+  "31224": {
+    "name_zh": "暗影斗篷",
+    "name_en": "Cloak of Shadows",
+    "icon": "spell_shadow_nethercloak"
+  },
+  "31821": {
+    "name_zh": "光环掌握",
+    "name_en": "Aura Mastery",
+    "icon": "spell_holy_auramastery"
+  },
+  "31850": {
+    "name_zh": "炽热防御者",
+    "name_en": "Ardent Defender",
+    "icon": "spell_holy_ardentdefender"
+  },
+  "33206": {
+    "name_zh": "痛苦压制",
+    "name_en": "Pain Suppression",
+    "icon": "spell_holy_painsupression"
+  },
+  "45438": {
+    "name_zh": "寒冰屏障",
+    "name_en": "Ice Block",
+    "icon": "spell_frost_frost"
+  },
+  "47585": {
+    "name_zh": "消散",
+    "name_en": "Dispersion",
+    "icon": "spell_shadow_dispersion"
+  },
+  "47788": {
+    "name_zh": "守护之魂",
+    "name_en": "Guardian Spirit",
+    "icon": "spell_holy_guardianspirit"
+  },
+  "48707": {
+    "name_zh": "反魔法护罩",
+    "name_en": "Anti-Magic Shell",
+    "icon": "spell_shadow_antimagicshell"
+  },
+  "48792": {
+    "name_zh": "冰封之韧",
+    "name_en": "Icebound Fortitude",
+    "icon": "spell_deathknight_iceboundfortitude"
+  },
+  "49039": {
+    "name_zh": "巫妖之躯",
+    "name_en": "Lichborne",
+    "icon": "spell_shadow_raisedead"
+  },
+  "51052": {
+    "name_zh": "反魔法领域",
+    "name_en": "Anti-Magic Zone",
+    "icon": "spell_deathknight_antimagiczone"
+  },
+  "55233": {
+    "name_zh": "吸血鬼之血",
+    "name_en": "Vampiric Blood",
+    "icon": "spell_shadow_lifedrain"
+  },
+  "55342": {
+    "name_zh": "镜像",
+    "name_en": "Mirror Image",
+    "icon": "spell_magic_lesserinvisibilty"
+  },
+  "61336": {
+    "name_zh": "生存本能",
+    "name_en": "Survival Instincts",
+    "icon": "ability_druid_tigersroar"
+  },
+  "62618": {
+    "name_zh": "真言术：障",
+    "name_en": "Power Word: Barrier",
+    "icon": "spell_holy_powerwordbarrier"
+  },
+  "64843": {
+    "name_zh": "神圣赞美诗",
+    "name_en": "Divine Hymn",
+    "icon": "spell_holy_divinehymn"
+  },
+  "86659": {
+    "name_zh": "远古列王守卫",
+    "name_en": "Guardian of Ancient Kings",
+    "icon": "spell_holy_heroism"
+  },
+  "97462": {
+    "name_zh": "集结呐喊",
+    "name_en": "Rallying Cry",
+    "icon": "ability_warrior_rallyingcry"
+  },
+  "98008": {
+    "name_zh": "灵魂链接图腾",
+    "name_en": "Spirit Link Totem",
+    "icon": "spell_shaman_spiritlink"
+  },
+  "102342": {
+    "name_zh": "铁木树皮",
+    "name_en": "Ironbark",
+    "icon": "spell_druid_ironbark"
+  },
+  "104773": {
+    "name_zh": "不灭决心",
+    "name_en": "Unending Resolve",
+    "icon": "spell_warlock_unendingresolve"
+  },
+  "108271": {
+    "name_zh": "星界转移",
+    "name_en": "Astral Shift",
+    "icon": "ability_shaman_astralshift"
+  },
+  "108416": {
+    "name_zh": "黑暗契约",
+    "name_en": "Dark Pact",
+    "icon": "spell_shadow_deathpact"
+  },
+  "110959": {
+    "name_zh": "强化隐形术",
+    "name_en": "Greater Invisibility",
+    "icon": "ability_mage_greaterinvisibility"
+  },
+  "115176": {
+    "name_zh": "禅悟冥想",
+    "name_en": "Zen Meditation",
+    "icon": "ability_monk_zenmeditation"
+  },
+  "115203": {
+    "name_zh": "壮胆酒",
+    "name_en": "Fortifying Brew",
+    "icon": "ability_monk_fortifyingale_new"
+  },
+  "115310": {
+    "name_zh": "还魂术",
+    "name_en": "Revival",
+    "icon": "spell_monk_revival"
+  },
+  "116849": {
+    "name_zh": "作茧缚命",
+    "name_en": "Life Cocoon",
+    "icon": "ability_monk_chicocoon"
+  },
+  "118038": {
+    "name_zh": "剑在人在",
+    "name_en": "Die by the Sword",
+    "icon": "ability_warrior_challange"
+  },
+  "122278": {
+    "name_zh": "躯不坏",
+    "name_en": "Dampen Harm",
+    "icon": "ability_monk_dampenharm"
+  },
+  "122470": {
+    "name_zh": "业报之触",
+    "name_en": "Touch of Karma",
+    "icon": "ability_monk_touchofkarma"
+  },
+  "122783": {
+    "name_zh": "散魔功",
+    "name_en": "Diffuse Magic",
+    "icon": "spell_monk_diffusemagic"
+  },
+  "12975": {
+    "name_zh": "破釜沉舟",
+    "name_en": "Last Stand",
+    "icon": "spell_holy_ashestoashes"
+  },
+  "184364": {
+    "name_zh": "狂怒回复",
+    "name_en": "Enraged Regeneration",
+    "icon": "ability_warrior_focusedrage"
+  },
+  "186265": {
+    "name_zh": "灵龟守护",
+    "name_en": "Aspect of the Turtle",
+    "icon": "ability_hunter_pet_turtle"
+  },
+  "187827": {
+    "name_zh": "恶魔变形",
+    "name_en": "Metamorphosis",
+    "icon": "ability_demonhunter_metamorphasistank"
+  },
+  "190456": {
+    "name_zh": "无视苦痛",
+    "name_en": "Ignore Pain",
+    "icon": "ability_warrior_renewedfury"
+  },
+  "196555": {
+    "name_zh": "虚空行走",
+    "name_en": "Netherwalk",
+    "icon": "ability_demonhunter_netherwalk"
+  },
+  "196718": {
+    "name_zh": "黑暗",
+    "name_en": "Darkness",
+    "icon": "ability_demonhunter_darkness"
+  },
+  "198589": {
+    "name_zh": "疾影",
+    "name_en": "Blur",
+    "icon": "ability_demonhunter_blur"
+  },
+  "198838": {
+    "name_zh": "大地之墙图腾",
+    "name_en": "Earthen Wall Totem",
+    "icon": "spell_nature_stoneskintotem"
+  },
+  "203720": {
+    "name_zh": "恶魔尖刺",
+    "name_en": "Demon Spikes",
+    "icon": "ability_demonhunter_demonspikes"
+  },
+  "204018": {
+    "name_zh": "破咒祝福",
+    "name_en": "Blessing of Spellwarding",
+    "icon": "spell_holy_blessingofprotection"
+  },
+  "204021": {
+    "name_zh": "烈火烙印",
+    "name_en": "Fiery Brand",
+    "icon": "ability_demonhunter_fierybrand"
+  },
+  "235313": {
+    "name_zh": "烈焰护体",
+    "name_en": "Blazing Barrier",
+    "icon": "ability_mage_moltenarmor"
+  },
+  "235450": {
+    "name_zh": "棱光屏障",
+    "name_en": "Prismatic Barrier",
+    "icon": "spell_magearmor"
+  },
+  "264735": {
+    "name_zh": "适者生存",
+    "name_en": "Survival of the Fittest",
+    "icon": "spell_nature_spiritofredemption"
+  },
+  "265202": {
+    "name_zh": "圣言术：赎",
+    "name_en": "Holy Word: Salvation",
+    "icon": "ability_priest_holysalvation"
+  },
+  "271466": {
+    "name_zh": "微光屏障",
+    "name_en": "Luminous Barrier",
+    "icon": "spell_priest_barrier"
+  },
+  "342245": {
+    "name_zh": "改变时间",
+    "name_en": "Alter Time",
+    "icon": "spell_mage_altertime"
+  },
+  "363534": {
+    "name_zh": "扭转乾坤",
+    "name_en": "Rewind",
+    "icon": "ability_evoker_rewind"
+  },
+  "363916": {
+    "name_zh": "黑曜鳞片",
+    "name_en": "Obsidian Scales",
+    "icon": "inv_artifact_dragonscales"
+  },
+  "370960": {
+    "name_zh": "翡翠交融",
+    "name_en": "Emerald Communion",
+    "icon": "ability_evoker_emeraldcommunion"
+  },
+  "374227": {
+    "name_zh": "微风",
+    "name_en": "Zephyr",
+    "icon": "ability_evoker_hoverblack"
+  },
+  "374348": {
+    "name_zh": "新生烈焰",
+    "name_en": "Renewing Blaze",
+    "icon": "ability_evoker_masterylifebinder_red"
+  },
+  "403876": {
+    "name_zh": "圣佑术",
+    "name_en": "Divine Protection",
+    "icon": "spell_holy_divineprotection"
+  },
+  "414658": {
+    "name_zh": "深寒",
+    "name_en": "Ice Cold",
+    "icon": "spell_fire_bluefirenova"
+  },
+  "414660": {
+    "name_zh": "群体屏障",
+    "name_en": "Mass Barrier",
+    "icon": "ability_mage_massinvisibility"
+  },
+  "431416": {
+    "name_zh": "阿加治疗药水",
+    "name_en": "Algari Healing Potion",
+    "icon": "inv_potion_54"
+  },
+  "431418": {
+    "name_zh": "阿加治疗药水",
+    "name_en": "Algari Healing Potion",
+    "icon": "inv_potion_54"
+  },
+  "431925": {
+    "name_zh": "坚定专注药水",
+    "name_en": "Potion of Unwavering Focus",
+    "icon": "trade_alchemy_dpotion_a28"
+  },
+  "431932": {
+    "name_zh": "回火药水",
+    "name_en": "Tempered Potion",
+    "icon": "trade_alchemy_dpotion_a22"
+  }
+}
