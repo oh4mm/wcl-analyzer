@@ -70,6 +70,10 @@ wcl timeline 报告代码 --pull 12 --open
 # 可视化：写出 HTML（可再 --open）
 wcl timeline 报告代码 --pull 12 --html timeline.html
 wcl timeline 报告代码 --pull 12 --player 法师甲 --html out.html --open
+
+# 导出减伤 / 药水 / 饰品 / 打断为 CSV（不含首领技能与阶段）
+wcl timeline 报告代码 --pull 12 --export-csv timeline.csv
+wcl timeline 报告代码 --pull 12 --player 法师甲 --category 个减 --export-csv mage.csv
 ```
 
 `timeline` 会按战斗相对时间合并：
@@ -84,6 +88,8 @@ HTML 泳道图：横轴为战斗相对时间（mm:ss），顶栏为首领技能 
 技能目录见 `src/wcl_analyzer/defenses.py`（个减 / 团减 / 治疗与爆发药水 / 主动治疗饰品；不含灵界打击一类坦克吞吐自疗）。药水与饰品按战斗日志 spell ID 匹配，目录会随赛季补全，未必覆盖全部变体。宠物施放的技能会归到主人。
 
 加上 `--json` 可以拿到结构化结果（可与 `--html` / `--open` 同时使用）。
+
+`--export-csv FILE` 把本场减伤 / 药水 / 饰品 / 打断事件写成 UTF-8 CSV（表头：时间、偏移毫秒、类别、玩家、专精、职业、技能、技能 ID、英文名、目标）。不含首领技能和阶段标记。已有的 `--player` / `--category` 会先过滤再导出，因此可以只导出某一名玩家或某一种类别。可与 `--html` / `--open` / `--json` 同时使用；单独使用时只写文件并打印路径，不重复输出文本表。
 
 `fight` / `pull` 编号是日志里的战斗 id，不是“第几次尝试”。`report` 的汇总表只列首领，小怪战斗会跳过。
 

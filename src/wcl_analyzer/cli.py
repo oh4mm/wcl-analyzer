@@ -10,7 +10,13 @@ from pathlib import Path
 from wcl_analyzer.analysis import analyze_fight, resolve_fight_token, select_fight, summarize_bosses
 from wcl_analyzer.client import WclClient, WclError
 from wcl_analyzer.config import credentials
-from wcl_analyzer.format import format_fight, format_pulls, format_report, format_timeline
+from wcl_analyzer.format import (
+    format_defense_csv,
+    format_fight,
+    format_pulls,
+    format_report,
+    format_timeline,
+)
 from wcl_analyzer.html_timeline import write_timeline_html
 from wcl_analyzer.models import Report, TimelineAnalysis, fight_display_name, fight_kind_label
 from wcl_analyzer.refs import parse_report_ref
@@ -73,6 +79,11 @@ def main(argv: list[str] | None = None) -> int:
         "--no-fetch-meta",
         action="store_true",
         help="不请求 Wowhead 补全未知技能的中文名 / 图标（仍用本地缓存与 WCL 图标）",
+    )
+    timeline_cmd.add_argument(
+        "--export-csv",
+        metavar="FILE",
+        help="把减伤 / 药水 / 饰品 / 打断事件导出为 CSV（不含首领技能与阶段；遵守 --player / --category）",
     )
     timeline_cmd.add_argument("--json", action="store_true", help="输出 JSON")
     timeline_cmd.set_defaults(func=_cmd_timeline)
@@ -196,10 +207,14 @@ def _cmd_timeline(client: WclClient, args: argparse.Namespace) -> None:
     if visual:
         html_path = _write_timeline_visual(analysis, args.html, open_browser=args.open)
         print(f"已写出可视化时间线：{html_path}")
+    if args.export_csv:
+        csv_path = _write_timeline_csv(analysis, args.export_csv)
+        count = sum(1 for event in analysis.events if event.kind == "defense")
+        print(f"已导出减伤 / 药水事件：{csv_path}（{count} 条）")
     if args.json:
         print(json.dumps(asdict(analysis), ensure_ascii=False, indent=2))
         return
-    if not visual:
+    if not visual and not args.export_csv:
         print(format_timeline(analysis))
 
 
@@ -235,6 +250,13 @@ def _print_pulls(report: Report, *, as_json: bool) -> None:
         print(json.dumps(payload, ensure_ascii=False, indent=2))
         return
     print(format_pulls(report))
+
+
+def _write_timeline_csv(analysis: TimelineAnalysis, csv_path: str) -> Path:
+    path = Path(csv_path).expanduser()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(format_defense_csv(analysis), encoding="utf-8-sig")
+    return path.resolve()
 
 
 def _write_timeline_visual(
