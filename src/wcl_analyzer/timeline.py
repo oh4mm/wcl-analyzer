@@ -471,12 +471,17 @@ def _boss_cast_events(
         # WowAnalyzer EnemyCasts：保留 begincast + cast，再配对成一条带时长的施法
         if raw.get("type") not in {None, "cast", "begincast"}:
             continue
+        # sourceID=-1 是 Environment：常见于玩家领域/光环对队友的「施法」记录
+        if _source_id(raw) == -1:
+            continue
         spell_id = _ability_id(raw)
         ability_name = _ability_name(raw, abilities)
         if is_ignored_boss_ability(spell_id, ability_name):
             continue
         source = _resolve_actor(raw.get("sourceID"), actors_by_id, prefer_owner=False)
         if source is not None and (source.is_player or source.is_pet):
+            continue
+        if source is not None and (source.name or "").casefold() == "environment":
             continue
         candidates.append((raw, source, spell_id, ability_name))
 

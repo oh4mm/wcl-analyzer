@@ -105,6 +105,53 @@ def test_lookup_defense_by_id_and_name() -> None:
     assert lookup_defense(name="Frenzied Regeneration") is None
 
 
+def test_boss_lane_ignores_environment_amz_aura() -> None:
+    """玩家反魔法领域的 Environment 光环生效不应出现在首领轴。"""
+    fight = _fight()
+    abilities = {
+        451112: "刺骨尖啸",
+        51052: "Anti-Magic Zone",
+        145629: "Anti-Magic Zone",
+    }
+    analysis = analyze_timeline(
+        fight,
+        actors=_actors()
+        + (
+            ActorInfo(id=20, name="神奇的阿诺", type="Player", sub_type="DeathKnight"),
+        ),
+        abilities=abilities,
+        defense_events=[
+            {
+                "timestamp": 130_000,
+                "type": "cast",
+                "sourceID": 20,
+                "abilityGameID": 51052,
+            },
+        ],
+        boss_events=[
+            {
+                "timestamp": 130_000,
+                "type": "cast",
+                "sourceID": 1,
+                "abilityGameID": 451112,
+            },
+            # WCL 把 AMZ 光环记成 Environment(sourceID=-1) 对玩家的 cast
+            {
+                "timestamp": 130_009,
+                "type": "cast",
+                "sourceID": -1,
+                "targetID": 20,
+                "abilityGameID": 145629,
+            },
+        ],
+    )
+    boss = [event for event in analysis.events if event.kind == "boss"]
+    defense = [event for event in analysis.events if event.kind == "defense"]
+    assert [event.ability_id for event in boss] == [451112]
+    assert not any(event.ability_id == 145629 for event in boss)
+    assert any(event.ability_id == 51052 and event.actor == "神奇的阿诺" for event in defense)
+
+
 def test_analyze_timeline_sorts_filters_and_categorizes() -> None:
     fight = _fight()
     abilities = {
