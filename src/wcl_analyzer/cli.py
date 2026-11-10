@@ -63,7 +63,7 @@ def main(argv: list[str] | None = None) -> int:
     timeline_cmd.add_argument("--player", help="只显示该玩家的减伤 / 药水（仍保留首领技能）")
     timeline_cmd.add_argument(
         "--category",
-        help="只显示该类别：个减、团减、治疗药水、爆发药水、治疗饰品、打断",
+        help="只显示该类别：个减、团减、治疗药水、爆发药水、治疗饰品、种族、打断",
     )
     timeline_cmd.add_argument(
         "--html",

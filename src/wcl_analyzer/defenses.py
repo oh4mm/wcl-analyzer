@@ -15,7 +15,10 @@ class DefenseCategory(str, Enum):
     HEAL_POTION = "heal_potion"
     COMBAT_POTION = "combat_potion"
     HEAL_TRINKET = "heal_trinket"
+    RACIAL = "racial"
     INTERRUPT = "interrupt"
+    DEATH = "death"
+    BATTLE_RES = "battle_res"
 
 
 CATEGORY_LABELS = {
@@ -24,7 +27,10 @@ CATEGORY_LABELS = {
     DefenseCategory.HEAL_POTION: "治疗药水",
     DefenseCategory.COMBAT_POTION: "爆发药水",
     DefenseCategory.HEAL_TRINKET: "治疗饰品",
+    DefenseCategory.RACIAL: "种族",
     DefenseCategory.INTERRUPT: "打断",
+    DefenseCategory.DEATH: "死亡",
+    DefenseCategory.BATTLE_RES: "战复",
 }
 
 CATEGORY_ALIASES = {
@@ -43,9 +49,21 @@ CATEGORY_ALIASES = {
     "治疗饰品": DefenseCategory.HEAL_TRINKET,
     "heal_trinket": DefenseCategory.HEAL_TRINKET,
     "trinket": DefenseCategory.HEAL_TRINKET,
+    "种族": DefenseCategory.RACIAL,
+    "种族技能": DefenseCategory.RACIAL,
+    "racial": DefenseCategory.RACIAL,
+    "racials": DefenseCategory.RACIAL,
     "打断": DefenseCategory.INTERRUPT,
     "interrupt": DefenseCategory.INTERRUPT,
     "interrupts": DefenseCategory.INTERRUPT,
+    "死亡": DefenseCategory.DEATH,
+    "death": DefenseCategory.DEATH,
+    "deaths": DefenseCategory.DEATH,
+    "战复": DefenseCategory.BATTLE_RES,
+    "战斗复活": DefenseCategory.BATTLE_RES,
+    "battle_res": DefenseCategory.BATTLE_RES,
+    "battleres": DefenseCategory.BATTLE_RES,
+    "bres": DefenseCategory.BATTLE_RES,
 }
 
 
@@ -57,7 +75,7 @@ class DefenseAbility:
     aliases: tuple[str, ...] = ()
 
 
-# 只收录真实个减 / 墙 / 团减、药水、主动治疗饰品，以及打断。
+# 只收录真实个减 / 墙 / 团减、药水、主动治疗饰品、种族主动技能，以及打断。
 # 不收坦克吞吐自疗或纯治疗类技能（如灵界打击、狂暴回复、意气风发等）。
 # 药水 / 饰品以战斗日志中的 spell ID（item use）为准，不是物品 ID。
 DEFENSE_ABILITIES: tuple[DefenseAbility, ...] = (
@@ -281,6 +299,53 @@ DEFENSE_ABILITIES: tuple[DefenseAbility, ...] = (
         DefenseCategory.HEAL_TRINKET,
         ("Order Up!", "Emerald Coach's Whistle"),
     ),
+    # —— 种族主动技能 ——
+    # 联盟
+    DefenseAbility(59752, "生存意志", DefenseCategory.RACIAL, ("Will to Survive", "Every Man for Himself")),
+    DefenseAbility(20594, "石像形态", DefenseCategory.RACIAL, ("Stoneform",)),
+    DefenseAbility(58984, "影遁", DefenseCategory.RACIAL, ("Shadowmeld",)),
+    DefenseAbility(20589, "逃命专家", DefenseCategory.RACIAL, ("Escape Artist",)),
+    DefenseAbility(28880, "纳鲁的赐福", DefenseCategory.RACIAL, ("Gift of the Naaru",)),
+    DefenseAbility(59542, "纳鲁的赐福", DefenseCategory.RACIAL, ("Gift of the Naaru",)),
+    DefenseAbility(59543, "纳鲁的赐福", DefenseCategory.RACIAL, ("Gift of the Naaru",)),
+    DefenseAbility(59544, "纳鲁的赐福", DefenseCategory.RACIAL, ("Gift of the Naaru",)),
+    DefenseAbility(59545, "纳鲁的赐福", DefenseCategory.RACIAL, ("Gift of the Naaru",)),
+    DefenseAbility(59547, "纳鲁的赐福", DefenseCategory.RACIAL, ("Gift of the Naaru",)),
+    DefenseAbility(59548, "纳鲁的赐福", DefenseCategory.RACIAL, ("Gift of the Naaru",)),
+    DefenseAbility(121093, "纳鲁的赐福", DefenseCategory.RACIAL, ("Gift of the Naaru",)),
+    DefenseAbility(68992, "疾步夜行", DefenseCategory.RACIAL, ("Darkflight",)),
+    DefenseAbility(256948, "空间裂隙", DefenseCategory.RACIAL, ("Spatial Rift",)),
+    DefenseAbility(255647, "圣光裁决者", DefenseCategory.RACIAL, ("Light's Judgment",)),
+    DefenseAbility(265221, "烈焰之血", DefenseCategory.RACIAL, ("Fireblood",)),
+    DefenseAbility(287712, "重拳出击", DefenseCategory.RACIAL, ("Haymaker",)),
+    DefenseAbility(312924, "超有机光原", DefenseCategory.RACIAL, ("Hyper Organic Light Originator",)),
+    # 部落
+    DefenseAbility(20572, "血性狂怒", DefenseCategory.RACIAL, ("Blood Fury",)),
+    DefenseAbility(33697, "血性狂怒", DefenseCategory.RACIAL, ("Blood Fury",)),
+    DefenseAbility(33702, "血性狂怒", DefenseCategory.RACIAL, ("Blood Fury",)),
+    DefenseAbility(7744, "亡灵意志", DefenseCategory.RACIAL, ("Will of the Forsaken",)),
+    DefenseAbility(20577, "食尸", DefenseCategory.RACIAL, ("Cannibalize",)),
+    DefenseAbility(20549, "战争践踏", DefenseCategory.RACIAL, ("War Stomp",)),
+    DefenseAbility(26297, "狂暴", DefenseCategory.RACIAL, ("Berserking",)),
+    DefenseAbility(28730, "奥术洪流", DefenseCategory.RACIAL, ("Arcane Torrent",)),
+    DefenseAbility(25046, "奥术洪流", DefenseCategory.RACIAL, ("Arcane Torrent",)),
+    DefenseAbility(50613, "奥术洪流", DefenseCategory.RACIAL, ("Arcane Torrent",)),
+    DefenseAbility(69179, "奥术洪流", DefenseCategory.RACIAL, ("Arcane Torrent",)),
+    DefenseAbility(80483, "奥术洪流", DefenseCategory.RACIAL, ("Arcane Torrent",)),
+    DefenseAbility(129597, "奥术洪流", DefenseCategory.RACIAL, ("Arcane Torrent",)),
+    DefenseAbility(155145, "奥术洪流", DefenseCategory.RACIAL, ("Arcane Torrent",)),
+    DefenseAbility(202719, "奥术洪流", DefenseCategory.RACIAL, ("Arcane Torrent",)),
+    DefenseAbility(232633, "奥术洪流", DefenseCategory.RACIAL, ("Arcane Torrent",)),
+    DefenseAbility(69070, "火箭跳", DefenseCategory.RACIAL, ("Rocket Jump",)),
+    DefenseAbility(69041, "火箭弹幕", DefenseCategory.RACIAL, ("Rocket Barrage",)),
+    DefenseAbility(260364, "奥术脉冲", DefenseCategory.RACIAL, ("Arcane Pulse",)),
+    DefenseAbility(255654, "蛮牛冲撞", DefenseCategory.RACIAL, ("Bull Rush",)),
+    DefenseAbility(274738, "先祖召唤", DefenseCategory.RACIAL, ("Ancestral Call",)),
+    DefenseAbility(291944, "再生", DefenseCategory.RACIAL, ("Regeneratin'", "Regeneratin")),
+    DefenseAbility(281954, "翼手龙之翱", DefenseCategory.RACIAL, ("Pterrordax Swoop",)),
+    DefenseAbility(312411, "袋里乾坤", DefenseCategory.RACIAL, ("Bag of Tricks",)),
+    # 土灵等
+    DefenseAbility(436344, "艾泽里特涌动", DefenseCategory.RACIAL, ("Azerite Surge",)),
     # —— 打断（页面默认隐藏，勾选「显示打断」后出现在玩家泳道）——
     DefenseAbility(1766, "脚踢", DefenseCategory.INTERRUPT, ("Kick",)),
     DefenseAbility(6552, "拳击", DefenseCategory.INTERRUPT, ("Pummel",)),
@@ -301,6 +366,13 @@ DEFENSE_ABILITIES: tuple[DefenseAbility, ...] = (
     DefenseAbility(19647, "法术封锁", DefenseCategory.INTERRUPT, ("Spell Lock",)),
     DefenseAbility(132409, "法术封锁", DefenseCategory.INTERRUPT, ("Spell Lock",)),
     DefenseAbility(78675, "日光术", DefenseCategory.INTERRUPT, ("Solar Beam",)),
+    # —— 战斗复活 ——
+    DefenseAbility(20484, "复生", DefenseCategory.BATTLE_RES, ("Rebirth",)),
+    DefenseAbility(61999, "复活盟友", DefenseCategory.BATTLE_RES, ("Raise Ally",)),
+    DefenseAbility(391054, "代祷", DefenseCategory.BATTLE_RES, ("Intercession",)),
+    DefenseAbility(20707, "灵魂石", DefenseCategory.BATTLE_RES, ("Soulstone",)),
+    DefenseAbility(95750, "灵魂石复活", DefenseCategory.BATTLE_RES, ("Soulstone Resurrection",)),
+    DefenseAbility(361227, "回归", DefenseCategory.BATTLE_RES, ("Return",)),
 )
 
 # 近战 / 自动射击等，不当作首领技能波次标记
@@ -342,7 +414,7 @@ def parse_category(token: str) -> DefenseCategory:
     if mapped is None:
         raise ValueError(
             f"无法识别的类别：{token}。"
-            "可用：个减、团减、治疗药水、爆发药水、治疗饰品、打断。"
+            "可用：个减、团减、治疗药水、爆发药水、治疗饰品、种族、打断、死亡、战复。"
         )
     return mapped
 
