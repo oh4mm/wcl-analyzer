@@ -7,6 +7,8 @@ from wcl_analyzer.models import (
     ActorInfo,
     DungeonPull,
     Fight,
+    HealthSample,
+    HealthSeries,
     PhaseTransition,
     Report,
     TimelineEvent,
@@ -14,6 +16,7 @@ from wcl_analyzer.models import (
 from wcl_analyzer.spell_meta import SpellMetaStore, enrich_timeline_metadata
 from wcl_analyzer.timeline import (
     analyze_timeline,
+    actor_ability_key,
     boss_dungeon_pulls,
     build_health_series,
     fetch_timeline_inputs,
@@ -22,6 +25,7 @@ from wcl_analyzer.timeline import (
     infer_boss_pulls_from_events,
     pull_offsets,
     resolve_boss_pulls,
+    summarize_actor_abilities,
 )
 
 
@@ -98,11 +102,87 @@ def test_lookup_defense_by_id_and_name() -> None:
     assert lookup_defense(1766).category == DefenseCategory.INTERRUPT
     assert lookup_defense(2139).name == "法术反制"
     assert parse_category("打断") == DefenseCategory.INTERRUPT
+    # 种族主动技能
+    assert lookup_defense(20594).category == DefenseCategory.RACIAL
+    assert lookup_defense(20594).name == "石像形态"
+    assert lookup_defense(265221).name == "烈焰之血"
+    assert lookup_defense(26297).name == "狂暴"
+    assert lookup_defense(name="Blood Fury").category == DefenseCategory.RACIAL
+    assert parse_category("种族") == DefenseCategory.RACIAL
+    # 战斗复活
+    assert lookup_defense(20484).category == DefenseCategory.BATTLE_RES
+    assert lookup_defense(20484).name == "复生"
+    assert lookup_defense(61999).name == "复活盟友"
+    assert lookup_defense(391054).name == "代祷"
+    assert lookup_defense(name="Soulstone").category == DefenseCategory.BATTLE_RES
+    assert parse_category("战复") == DefenseCategory.BATTLE_RES
+    assert parse_category("死亡") == DefenseCategory.DEATH
     # 坦克吞吐 / 自疗不应再出现在个减目录
     assert lookup_defense(49998) is None
     assert lookup_defense(name="Death Strike") is None
     assert lookup_defense(22842) is None
     assert lookup_defense(name="Frenzied Regeneration") is None
+
+
+def test_timeline_includes_deaths_and_battle_res(tmp_path) -> None:
+    """玩家死亡与战复应出现在同一套玩家泳道时间线里。"""
+    fight = _fight(phase_transitions=())
+    actors = _actors() + (
+        ActorInfo(id=12, name="德鲁伊丙", type="Player", sub_type="Druid"),
+    )
+    analysis = analyze_timeline(
+        fight,
+        actors=actors,
+        abilities={20484: "Rebirth", 45438: "Ice Block"},
+        defense_events=[
+            {
+                "timestamp": 150_000,
+                "type": "cast",
+                "sourceID": 12,
+                "targetID": 11,
+                "abilityGameID": 20484,
+            },
+            {
+                "timestamp": 140_000,
+                "type": "cast",
+                "sourceID": 10,
+                "abilityGameID": 45438,
+            },
+        ],
+        boss_events=[],
+        death_table={
+            "entries": [
+                {
+                    "name": "战士乙",
+                    "type": "Warrior",
+                    "icon": "Warrior-Protection",
+                    "deathTime": 130_000,
+                    "ability": {"name": "粉碎"},
+                }
+            ]
+        },
+    )
+    deaths = [event for event in analysis.events if event.category == "死亡"]
+    bres = [event for event in analysis.events if event.category == "战复"]
+    assert len(deaths) == 1
+    assert deaths[0].actor == "战士乙"
+    assert deaths[0].ability == "死亡"
+    assert deaths[0].offset_ms == 30_000
+    assert deaths[0].description == "致死技能：粉碎"
+    assert len(bres) == 1
+    assert bres[0].actor == "德鲁伊丙"
+    assert bres[0].ability == "复生"
+    assert bres[0].target == "战士乙"
+
+    store = SpellMetaStore(cache_path=tmp_path / "meta.json", fetch=False)
+    analysis = enrich_timeline_metadata(analysis, store, fetch=False)
+    html = render_timeline_html(analysis)
+    assert '"category": "死亡"' in html or '"category":"死亡"' in html
+    assert '"category": "战复"' in html or '"category":"战复"' in html
+    assert "#111827" in html
+    assert "#16a34a" in html
+    assert "战士乙" in html
+    assert "德鲁伊丙" in html
 
 
 def test_boss_lane_ignores_environment_amz_aura() -> None:
@@ -389,6 +469,10 @@ def test_render_timeline_html_contains_markers_and_categories(tmp_path) -> None:
     assert "阶段 2" in html
     assert "fight id 12" in html
     assert "首领技能间隔" in html
+    assert 'id="cd-open-btn"' in html
+    assert 'id="cd-modal"' in html
+    assert "cd-section" not in html
+    assert "openCdModal" in html
     assert "推算 CD" in html
     assert "wow.zamimg.com/images/wow/icons/large/spell_frost_frost.jpg" in html
     assert "iconUrl" in html
@@ -600,11 +684,30 @@ def test_fetch_timeline_inputs_forwards_ability_icons() -> None:
             self.event_calls.append(kwargs)
             return []
 
+        def get_fight_tables(self, code: str, fight_id: int) -> dict:
+            assert code == "Abcd1234"
+            assert fight_id == 12
+            return {
+                "deaths": {
+                    "entries": [
+                        {
+                            "name": "战士乙",
+                            "type": "Warrior",
+                            "icon": "Warrior-Protection",
+                            "deathTime": 130_000,
+                            "ability": {"name": "粉碎"},
+                        }
+                    ]
+                }
+            }
+
     client = FakeClient()
     payload = fetch_timeline_inputs(client, "Abcd1234", _fight())
     assert payload["ability_icons"][45438] == "spell_frost_frost.jpg"
     assert payload["ability_icons"][451112] == "spell_shadow_psychicscream.jpg"
     assert "health_events" in payload
+    assert "damage_taken_events" in payload
+    assert payload["death_table"]["entries"][0]["name"] == "战士乙"
     health_calls = [
         call
         for call in client.event_calls
@@ -612,6 +715,169 @@ def test_fetch_timeline_inputs_forwards_ability_icons() -> None:
     ]
     assert health_calls
     assert health_calls[0].get("include_resources") is True
+    taken_calls = [
+        call
+        for call in client.event_calls
+        if call.get("data_type") == "DamageTaken"
+    ]
+    assert taken_calls
+    assert taken_calls[0].get("hostility_type") == "Friendlies"
+
+
+def test_boss_damage_spans_from_damage_taken_without_cast() -> None:
+    """无 Cast 的成段承伤（如 Galvanized）应合成首领轴持续伤害条。"""
+    fight = _fight()
+    # Lightning Spire 在 WCL 常标成 Pet 且无玩家主人
+    actors = _actors() + (
+        ActorInfo(id=59, name="Lightning Spire", type="Pet", sub_type="Pet"),
+    )
+    abilities = {266923: "Galvanized", 1290531: "Induction", 1: "Melee"}
+    # 诱导有施法；Galvanized / 平 A 只有承伤跳字
+    analysis = analyze_timeline(
+        fight,
+        actors=actors,
+        abilities=abilities,
+        defense_events=[],
+        boss_events=[
+            {
+                "timestamp": 150_000,
+                "type": "begincast",
+                "sourceID": 1,
+                "abilityGameID": 1290531,
+            },
+            {
+                "timestamp": 153_000,
+                "type": "cast",
+                "sourceID": 1,
+                "abilityGameID": 1290531,
+            },
+        ],
+        damage_taken_events=[
+            # Galvanized 连续跳字（诱导前），来自敌方召唤物
+            *[
+                {
+                    "timestamp": 130_000 + index * 500,
+                    "type": "damage",
+                    "sourceID": 59,
+                    "targetID": 10,
+                    "abilityGameID": 266923,
+                    "amount": 100_000,
+                }
+                for index in range(8)
+            ],
+            # 玩家宠物伤害应忽略
+            *[
+                {
+                    "timestamp": 130_000 + index * 500,
+                    "type": "damage",
+                    "sourceID": 50,
+                    "targetID": 11,
+                    "abilityGameID": 266923,
+                    "amount": 100_000,
+                }
+                for index in range(8)
+            ],
+            # 平 A 应忽略
+            {
+                "timestamp": 131_000,
+                "type": "damage",
+                "sourceID": 1,
+                "targetID": 11,
+                "abilityGameID": 1,
+                "amount": 50_000,
+            },
+            # 诱导结算伤害：已有 Cast，不应再合成一条
+            {
+                "timestamp": 153_000,
+                "type": "damage",
+                "sourceID": 1,
+                "targetID": 10,
+                "abilityGameID": 1290531,
+                "amount": 200_000,
+            },
+            {
+                "timestamp": 153_000,
+                "type": "damage",
+                "sourceID": 1,
+                "targetID": 11,
+                "abilityGameID": 1290531,
+                "amount": 200_000,
+            },
+            {
+                "timestamp": 153_000,
+                "type": "damage",
+                "sourceID": 1,
+                "targetID": 12,
+                "abilityGameID": 1290531,
+                "amount": 200_000,
+            },
+        ],
+    )
+    boss = [event for event in analysis.events if event.kind == "boss"]
+    galvanized = [event for event in boss if event.ability_id == 266923]
+    induction = [event for event in boss if event.ability_id == 1290531]
+    assert len(galvanized) == 1
+    assert galvanized[0].category == "持续伤害"
+    assert galvanized[0].actor == "闪电尖塔"
+    assert galvanized[0].offset_ms == 30_000
+    assert abs(galvanized[0].duration_ms - 3_500) < 1.0
+    assert len(induction) == 1
+    assert induction[0].duration_ms == 3_000
+    assert not any(event.ability_id == 1 for event in boss)
+
+
+def test_build_health_series_keeps_midfight_pct_despite_dense_tail() -> None:
+    """后期伤害再密，也不能把中段血量采样挤掉（否则拖动时只能 100%→低血插值）。"""
+    fight = _fight(start_time=0, end_time=300_000)
+    actors = {
+        1: ActorInfo(id=1, name="加瓦兹特", type="NPC", sub_type="NPC"),
+        10: ActorInfo(id=10, name="法师甲", type="Player", sub_type="Mage"),
+    }
+    max_hp = 1_000_000
+    events: list[dict] = []
+    # 前 200s：每秒 1 点，血量 100%→20%
+    for second in range(0, 200):
+        pct = 100.0 - second * 0.4
+        events.append(
+            {
+                "timestamp": second * 1_000,
+                "type": "damage",
+                "sourceID": 10,
+                "targetID": 1,
+                "hitPoints": int(max_hp * pct / 100.0),
+                "maxHitPoints": max_hp,
+            }
+        )
+    # 后 100s：每 10ms 1 点（极密尾段），血量 20%→0%
+    for index in range(0, 10_000):
+        pct = 20.0 - index * 0.002
+        events.append(
+            {
+                "timestamp": 200_000 + index * 10,
+                "type": "damage",
+                "sourceID": 10,
+                "targetID": 1,
+                "hitPoints": max(0, int(max_hp * pct / 100.0)),
+                "maxHitPoints": max_hp,
+            }
+        )
+    series = build_health_series(fight, events, actors)
+    boss = next(item for item in series if item.id == 1)
+    assert len(boss.samples) <= 240
+
+    def pct_at(offset_ms: float) -> float:
+        prev = boss.samples[0]
+        for sample in boss.samples:
+            if sample.offset_ms <= offset_ms:
+                prev = sample
+            else:
+                break
+        return prev.pct
+
+    # 中段应仍接近真实 ~60% / ~40%，不能被尾段抽稀挤成接近 100% 或乱插值
+    assert 55.0 <= pct_at(100_000) <= 65.0
+    assert 35.0 <= pct_at(150_000) <= 45.0
+    assert pct_at(299_000) <= 5.0
 
 
 def test_build_health_series_samples_boss_and_add_pct() -> None:
@@ -718,6 +984,68 @@ def test_health_series_payload_keeps_series_for_each_boss_window() -> None:
     assert any(item["name"] == "加瓦兹特" for item in covered)
 
 
+def test_summarize_actor_abilities_for_health_tooltip() -> None:
+    events = (
+        TimelineEvent(
+            offset_ms=1_000,
+            kind="boss",
+            ability="刺骨尖啸",
+            ability_id=451112,
+            actor="虫巢女王",
+            description="对敌人造成暗影伤害。",
+            cast_label="2秒施法",
+        ),
+        TimelineEvent(
+            offset_ms=5_000,
+            kind="boss",
+            ability="刺骨尖啸",
+            ability_id=451112,
+            actor="虫巢女王",
+            cast_label="2秒施法",
+        ),
+        TimelineEvent(
+            offset_ms=2_000,
+            kind="boss",
+            ability="冲锋",
+            ability_id=100,
+            actor="甲虫 #2",
+            description="向目标冲锋。",
+            cast_label="瞬发",
+        ),
+        TimelineEvent(
+            offset_ms=3_000,
+            kind="defense",
+            ability="寒冰屏障",
+            ability_id=45438,
+            actor="法师甲",
+        ),
+    )
+    catalog = summarize_actor_abilities(events)
+    assert actor_ability_key("虫巢女王 #3") == "虫巢女王"
+    queen = catalog["虫巢女王"]
+    assert len(queen) == 1
+    assert queen[0].ability == "刺骨尖啸"
+    assert queen[0].cast_count == 2
+    assert queen[0].cast_label == "2秒施法"
+    assert queen[0].description == "对敌人造成暗影伤害。"
+    beetle = catalog[actor_ability_key("甲虫 #2")]
+    assert len(beetle) == 1
+    assert beetle[0].ability == "冲锋"
+    payload = health_series_payload(
+        (
+            HealthSeries(
+                id=1,
+                name="虫巢女王",
+                is_boss=True,
+                samples=(HealthSample(offset_ms=0, pct=100.0),),
+            ),
+        ),
+        abilities_by_actor=catalog,
+    )
+    assert payload[0]["abilities"][0]["castLabel"] == "2秒施法"
+    assert "法师甲" not in catalog
+
+
 def test_analyze_timeline_includes_health_series_and_html_scrubber(tmp_path) -> None:
     fight = _fight()
     analysis = analyze_timeline(
@@ -778,6 +1106,20 @@ def test_analyze_timeline_includes_health_series_and_html_scrubber(tmp_path) -> 
     assert decl < first_call
     assert "虫巢女王" in html
     assert "甲虫" in html
+    assert '"abilities"' in html
+    assert "bindHpAbilityTip" in html
+    assert "hpAbilityTipHtml" in html
+    assert "hp-tip" in html
+    assert "hp-tip-body" in html
+    assert "placeHpAbilityTip" in html
+    assert "pointer-events: auto" in html
+    assert "可滚动查看" in html
+    assert "施法时间:" in html
+    assert "本场未见该单位施法" in html
+    queen = next(item for item in analysis.health_series if item.name == "虫巢女王")
+    catalog = summarize_actor_abilities(analysis.events)
+    assert actor_ability_key(queen.name) in catalog
+    assert any(item.ability == "刺骨尖啸" for item in catalog[actor_ability_key(queen.name)])
 
 
 def test_temple_of_sethraliss_localized() -> None:
@@ -786,8 +1128,45 @@ def test_temple_of_sethraliss_localized() -> None:
     assert short_encounter_name("Temple of Sethraliss") == "塞塔里斯神庙"
     assert short_encounter_name("Adderis and Aspix") == "阿德里斯和阿斯匹克斯"
     assert short_encounter_name("Merektha") == "米利克萨"
+    assert short_encounter_name("Sandswept Hunter") == "流沙猎手"
+    assert short_encounter_name("Lightning Spire") == "闪电尖塔"
+    assert short_encounter_name("Static Anomaly") == "静电异常体"
+    assert short_encounter_name("Faithless Conscript") == "无信援兵"
     fight = _fight(name="Temple of Sethraliss", encounter_id=0, difficulty=10, keystone_level=24)
     assert "塞塔里斯神庙" in fight_display_name(fight)
+
+
+def test_boss_event_actor_uses_chinese_alias() -> None:
+    analysis = analyze_timeline(
+        _fight(),
+        actors=_actors()
+        + (ActorInfo(id=59, name="Lightning Spire", type="Pet", sub_type="Pet"),),
+        abilities={266923: "Galvanized", 451112: "刺骨尖啸"},
+        defense_events=[],
+        boss_events=[
+            {
+                "timestamp": 130_000,
+                "type": "cast",
+                "sourceID": 1,
+                "abilityGameID": 451112,
+            },
+        ],
+        damage_taken_events=[
+            {
+                "timestamp": 130_000 + index * 500,
+                "type": "damage",
+                "sourceID": 59,
+                "targetID": 10,
+                "abilityGameID": 266923,
+                "amount": 100_000,
+            }
+            for index in range(5)
+        ],
+    )
+    boss = next(event for event in analysis.events if event.kind == "boss" and event.ability_id != 266923)
+    assert boss.actor == "虫巢女王"
+    galv = next(event for event in analysis.events if event.ability_id == 266923)
+    assert galv.actor == "闪电尖塔"
 
 
 def test_tww_season2_dungeon_and_npc_aliases() -> None:
@@ -816,6 +1195,29 @@ def test_tww_season2_dungeon_and_npc_aliases() -> None:
     assert short_encounter_name("Arathi Footman") == "阿拉希步兵"
     assert short_encounter_name("Darkfuse Hyena") == "暗索土狼"
     assert len(FIGHT_NAME_ZH) >= 200
+
+
+def test_midnight_mdt_dungeon_and_npc_aliases() -> None:
+    from wcl_analyzer.models import FIGHT_NAME_ZH, short_encounter_name
+
+    assert short_encounter_name("Murder Row") == "密谋小径"
+    assert short_encounter_name("Skyreach") == "通天峰"
+    assert short_encounter_name("Voidscar Arena") == "虚空之痕竞技场"
+    assert short_encounter_name("Algeth'ar Academy") == "艾杰斯亚学院"
+    assert short_encounter_name("Ruby Life Pools") == "红玉新生法池"
+    assert short_encounter_name("Kyrakka and Erkhart Stormvein") == "基拉卡和厄克哈特·风脉"
+    assert short_encounter_name("Magister's Terrace") == "魔导师平台"
+    assert short_encounter_name("Windrunner Spire") == "风行者之塔"
+    assert short_encounter_name("Belath Dawnblade") == "贝拉斯·黎明之刃"
+    assert short_encounter_name("Zuraal the Ascended") == "晋升者祖拉尔"
+    assert short_encounter_name("Aggravated Skitterfly") == "被激怒的掠蜓"
+    assert short_encounter_name("The Blinding Vale") == "夺目谷"
+    assert short_encounter_name("Lightblossom Trinity") == "光明之花三杰"
+    assert short_encounter_name("Ikuzz the Light Hunter") == "圣光猎手伊库兹"
+    assert short_encounter_name("Lightwarden Ruia") == "护光者鲁伊亚"
+    assert short_encounter_name("Ziekett") == "兹欧凯特"
+    assert short_encounter_name("Ziekket") == "兹欧凯特"
+    assert len(FIGHT_NAME_ZH) >= 600
 
 
 def test_format_pulls_lists_fight_ids() -> None:
@@ -1174,6 +1576,9 @@ def test_render_timeline_html_includes_boss_pull_controls(tmp_path) -> None:
     assert "boss-ability-btn" in html
     assert "navigateAbilityCast" in html
     assert "scrollToCast" in html
+    assert "seekToTime" in html
+    assert "seekToTime(focusedCastMs)" in html
+    assert "seekToTime(ev.offsetMs)" in html
     assert "smooth" in html
     assert "refreshAbilityCountLabels" in html
     assert "ability-count" in html

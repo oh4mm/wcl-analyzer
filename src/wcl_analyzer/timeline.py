@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from wcl_analyzer.defenses import (
@@ -13,6 +14,7 @@ from wcl_analyzer.defenses import (
     parse_category,
 )
 from wcl_analyzer.models import (
+    ActorAbilityInfo,
     ActorInfo,
     DungeonPull,
     Fight,
@@ -24,6 +26,25 @@ from wcl_analyzer.models import (
     spec_label,
 )
 from wcl_analyzer.spell_meta import summarize_boss_cds
+
+_ACTOR_INSTANCE_SUFFIX_RE = re.compile(r"\s+#\d+$")
+_PLAYER_CLASS_TYPES = frozenset(
+    {
+        "DeathKnight",
+        "DemonHunter",
+        "Druid",
+        "Evoker",
+        "Hunter",
+        "Mage",
+        "Monk",
+        "Paladin",
+        "Priest",
+        "Rogue",
+        "Shaman",
+        "Warlock",
+        "Warrior",
+    }
+)
 
 # 敌方血量采样：同一单位 hitPoints 未变时的最小记录间隔；每单位上限
 _HEALTH_MIN_GAP_MS = 400.0
@@ -43,6 +64,8 @@ def analyze_timeline(
     defense_events: list[dict[str, Any]],
     boss_events: list[dict[str, Any]],
     health_events: list[dict[str, Any]] | None = None,
+    damage_taken_events: list[dict[str, Any]] | None = None,
+    death_table: Any = None,
     player: str | None = None,
     category: str | DefenseCategory | None = None,
 ) -> TimelineAnalysis:
@@ -52,8 +75,19 @@ def analyze_timeline(
 
     events: list[TimelineEvent] = []
     events.extend(_phase_events(fight))
+    boss_casts = _boss_cast_events(fight, boss_events, actors_by_id, abilities)
+    events.extend(boss_casts)
+    cast_spell_ids = {
+        event.ability_id for event in boss_casts if event.ability_id is not None
+    }
     events.extend(
-        _boss_cast_events(fight, boss_events, actors_by_id, abilities)
+        _boss_damage_span_events(
+            fight,
+            damage_taken_events or [],
+            actors_by_id,
+            abilities,
+            existing_spell_ids=cast_spell_ids,
+        )
     )
     events.extend(
         _defense_cast_events(
@@ -61,6 +95,15 @@ def analyze_timeline(
             defense_events,
             actors_by_id,
             abilities,
+            player_filter=player_filter,
+            category_filter=category_filter,
+        )
+    )
+    events.extend(
+        _death_timeline_events(
+            fight,
+            death_table,
+            actors_by_id,
             player_filter=player_filter,
             category_filter=category_filter,
         )
@@ -107,6 +150,13 @@ def fetch_timeline_inputs(client: Any, code: str, fight: Fight) -> dict[str, Any
         data_type="Casts",
         hostility_type="Enemies",
     )
+    # 友方承伤：把没有 Cast 记录的持续伤害（如 Galvanized）合成首领轴时间条
+    damage_taken_events = client.get_events(
+        code,
+        fight,
+        data_type="DamageTaken",
+        hostility_type="Friendlies",
+    )
     # 友方 DamageDone + includeResources：目标（首领/小怪）带 hitPoints/maxHitPoints
     # 注意：WCL 默认不返回资源字段，不设 includeResources 时血量序列会为空
     health_events = client.get_events(
@@ -116,13 +166,17 @@ def fetch_timeline_inputs(client: Any, code: str, fight: Fight) -> dict[str, Any
         hostility_type="Friendlies",
         include_resources=True,
     )
+    # Deaths 走 table（与 fight 分析相同），事件流不一定有 Deaths dataType
+    tables = client.get_fight_tables(code, fight.id)
     return {
         "actors": master["actors"],
         "abilities": master["abilities"],
         "ability_icons": master.get("ability_icons") or {},
         "defense_events": defense_events,
         "boss_events": boss_events,
+        "damage_taken_events": damage_taken_events,
         "health_events": health_events,
+        "death_table": tables.get("deaths"),
     }
 
 
@@ -179,14 +233,14 @@ def build_health_series(
                 )
                 continue
         series.append(sample)
-        if len(series) > _HEALTH_MAX_SAMPLES:
-            # 均匀抽稀到上限一半，再继续追加
-            buckets[key] = _downsample_samples(series, _HEALTH_MAX_SAMPLES // 2)
 
     items: list[HealthSeries] = []
     for key, samples in buckets.items():
         if not samples:
             continue
+        # 整段结束后按时间均匀抽稀。流式按「下标」抽稀会偏向后期密集伤害，
+        # 把中段血量点挤掉，拖动时只能在 100%→低血之间瞎插值。
+        samples = _downsample_samples(samples, _HEALTH_MAX_SAMPLES)
         actor_id, instance = key
         name, is_boss = meta[key]
         localized = short_encounter_name(name)
@@ -288,23 +342,40 @@ def _select_health_series_for_payload(
 def health_series_payload(
     series: tuple[HealthSeries, ...] | list[HealthSeries],
     windows: list[tuple[float, float]] | tuple[tuple[float, float], ...] | None = None,
+    *,
+    abilities_by_actor: dict[str, tuple[ActorAbilityInfo, ...]] | None = None,
 ) -> list[dict[str, Any]]:
     """HTML / JSON 用的血量序列（限制条数与采样点，保证拖动时页面可响应）。
 
     windows: 可选的战斗相对时间窗（通常是首领 pull）。传入后会保证每个窗都有覆盖。
+    abilities_by_actor: 可选，按施法者名字（小写）挂上本场技能列表。
     """
     trimmed = _select_health_series_for_payload(series, windows)
+    catalog = abilities_by_actor or {}
     payload: list[dict[str, Any]] = []
     for item in trimmed:
         samples = list(item.samples)
         if len(samples) > _HEALTH_PAYLOAD_MAX_SAMPLES:
             samples = _downsample_samples(samples, _HEALTH_PAYLOAD_MAX_SAMPLES)
+        abilities = catalog.get(actor_ability_key(item.name), ())
         payload.append(
             {
                 "id": item.id,
                 "name": item.name,
                 "isBoss": item.is_boss,
                 "instance": item.instance,
+                "abilities": [
+                    {
+                        "ability": ability.ability,
+                        "abilityEn": ability.ability_en or "",
+                        "abilityId": ability.ability_id,
+                        "castCount": ability.cast_count,
+                        "description": ability.description or "",
+                        "castLabel": ability.cast_label or "",
+                        "icon": ability.icon or "",
+                    }
+                    for ability in abilities
+                ],
                 "samples": [
                     {
                         "offsetMs": sample.offset_ms,
@@ -317,6 +388,79 @@ def health_series_payload(
             }
         )
     return payload
+
+
+def actor_ability_key(name: str | None) -> str:
+    """血条名 / 施法者名对齐用的键（去掉「 #2」这类分身后缀）。"""
+    text = (name or "").strip()
+    if not text:
+        return ""
+    return _ACTOR_INSTANCE_SUFFIX_RE.sub("", text).casefold()
+
+
+def summarize_actor_abilities(
+    events: tuple[TimelineEvent, ...] | list[TimelineEvent],
+) -> dict[str, tuple[ActorAbilityInfo, ...]]:
+    """按施法者汇总本场首领/小怪技能（去重），供血条悬停展示。"""
+    buckets: dict[str, dict[tuple[int | None, str], dict[str, Any]]] = {}
+    for event in events:
+        if event.kind != "boss" or not event.actor:
+            continue
+        key = actor_ability_key(event.actor)
+        if not key:
+            continue
+        spell_key = (
+            event.ability_id,
+            (event.ability or "").casefold(),
+        )
+        bucket = buckets.setdefault(key, {})
+        entry = bucket.get(spell_key)
+        if entry is None:
+            bucket[spell_key] = {
+                "ability": event.ability,
+                "ability_id": event.ability_id,
+                "cast_count": 1,
+                "ability_en": event.ability_en,
+                "icon": event.icon,
+                "description": event.description,
+                "cast_label": event.cast_label,
+                "first_offset": event.offset_ms,
+            }
+            continue
+        entry["cast_count"] += 1
+        entry["first_offset"] = min(entry["first_offset"], event.offset_ms)
+        if not entry.get("ability_en") and event.ability_en:
+            entry["ability_en"] = event.ability_en
+        if not entry.get("icon") and event.icon:
+            entry["icon"] = event.icon
+        if not entry.get("description") and event.description:
+            entry["description"] = event.description
+        if not entry.get("cast_label") and event.cast_label:
+            entry["cast_label"] = event.cast_label
+
+    result: dict[str, tuple[ActorAbilityInfo, ...]] = {}
+    for actor_key, spell_map in buckets.items():
+        ordered = sorted(
+            spell_map.values(),
+            key=lambda item: (
+                float(item["first_offset"]),
+                str(item["ability"]).casefold(),
+                item["ability_id"] or 0,
+            ),
+        )
+        result[actor_key] = tuple(
+            ActorAbilityInfo(
+                ability=str(item["ability"]),
+                ability_id=item["ability_id"],
+                cast_count=int(item["cast_count"]),
+                ability_en=item.get("ability_en"),
+                icon=item.get("icon"),
+                description=item.get("description"),
+                cast_label=item.get("cast_label"),
+            )
+            for item in ordered
+        )
+    return result
 
 
 def boss_dungeon_pulls(fight: Fight) -> tuple[DungeonPull, ...]:
@@ -458,6 +602,10 @@ def _phase_events(fight: Fight) -> list[TimelineEvent]:
 _BOSS_CAST_MATCH_WINDOW_MS = 60_000.0
 # 同名相关施法（不同 spell id，如利斧投掷 cast + channel）去重窗口
 _BOSS_SAME_NAME_DEDUPE_MS = 250.0
+# 承伤跳字合成持续伤害条：相邻跳字间隔超过此值则拆成新一段
+_BOSS_DAMAGE_SPAN_GAP_MS = 2_500.0
+# 至少这么多次有效跳字才画条，避免零散饰品/环境 thrash
+_BOSS_DAMAGE_SPAN_MIN_HITS = 3
 
 
 def _boss_cast_events(
@@ -496,6 +644,109 @@ def _boss_cast_events(
         selected = candidates
     merged = _merge_boss_begincast_casts(fight, selected, actors_by_id)
     return _dedupe_boss_cast_events(merged)
+
+
+def _boss_damage_span_events(
+    fight: Fight,
+    raw_events: list[dict[str, Any]],
+    actors_by_id: dict[int, ActorInfo],
+    abilities: dict[int, str],
+    *,
+    existing_spell_ids: set[int],
+) -> list[TimelineEvent]:
+    """把没有敌方 Cast 的成段承伤（DoT / 场地跳字）合成首领轴时间条。
+
+    例如加瓦兹特的 Galvanized：WCL Casts 里没有施法，但 DamageTaken 有连续跳字；
+    合成后才能对照「诱导前 10 秒齐开减伤」到底在防什么。
+    """
+    # spell_id -> [(offset, source, name, amount)]
+    ticks: dict[int, list[tuple[float, ActorInfo | None, str, float]]] = {}
+    for raw in raw_events:
+        event_type = raw.get("type")
+        if event_type not in {None, "damage"}:
+            continue
+        spell_id = _ability_id(raw)
+        if spell_id is None or spell_id in existing_spell_ids:
+            continue
+        ability_name = _ability_name(raw, abilities)
+        if is_ignored_boss_ability(spell_id, ability_name):
+            continue
+        source = _resolve_actor(raw.get("sourceID"), actors_by_id, prefer_owner=False)
+        if source is not None and (source.name or "").casefold() == "environment":
+            continue
+        if not _is_enemy_damage_source(source, actors_by_id):
+            continue
+        amount = _damage_amount(raw)
+        if amount <= 0:
+            continue
+        offset = _offset_ms(raw, fight)
+        ticks.setdefault(spell_id, []).append((offset, source, ability_name, amount))
+
+    events: list[TimelineEvent] = []
+    for spell_id, points in ticks.items():
+        points.sort(key=lambda item: item[0])
+        cluster: list[tuple[float, ActorInfo | None, str, float]] = []
+
+        def flush() -> None:
+            nonlocal cluster
+            if len(cluster) < _BOSS_DAMAGE_SPAN_MIN_HITS:
+                cluster = []
+                return
+            first = cluster[0]
+            last = cluster[-1]
+            start = first[0]
+            end = last[0]
+            # 同源优先取首领，否则取跳字最多的名字
+            source = _pick_damage_span_source(cluster)
+            actor_name = source.name if source is not None else None
+            events.append(
+                TimelineEvent(
+                    offset_ms=start,
+                    kind="boss",
+                    ability=first[2],
+                    ability_id=spell_id,
+                    category="持续伤害",
+                    actor=short_encounter_name(actor_name) if actor_name else None,
+                    duration_ms=max(0.0, end - start),
+                )
+            )
+            cluster = []
+
+        for point in points:
+            if cluster and point[0] - cluster[-1][0] > _BOSS_DAMAGE_SPAN_GAP_MS:
+                flush()
+            cluster.append(point)
+        flush()
+
+    return events
+
+
+def _damage_amount(raw: dict[str, Any]) -> float:
+    total = 0.0
+    for key in ("amount", "absorbed", "overkill", "blocked"):
+        value = _coerce_float(raw.get(key))
+        if value is not None:
+            total += max(0.0, value)
+    return total
+
+
+def _pick_damage_span_source(
+    cluster: list[tuple[float, ActorInfo | None, str, float]],
+) -> ActorInfo | None:
+    counts: dict[int, tuple[int, ActorInfo]] = {}
+    for _offset, source, _name, _amount in cluster:
+        if source is None:
+            continue
+        prev = counts.get(source.id)
+        counts[source.id] = ((prev[0] + 1) if prev else 1, source)
+    if not counts:
+        return None
+    # 首领优先，否则跳字最多
+    ranked = sorted(
+        counts.values(),
+        key=lambda item: (0 if item[1].is_boss_npc else 1, -item[0], item[1].id),
+    )
+    return ranked[0][1]
 
 
 def _merge_boss_begincast_casts(
@@ -634,7 +885,7 @@ def _make_boss_event(
         ability=ability_name,
         ability_id=spell_id,
         category=category,
-        actor=actor_name,
+        actor=short_encounter_name(actor_name) if actor_name else None,
         spec=None,
         target=target_name,
         duration_ms=max(0.0, duration_ms),
@@ -718,6 +969,25 @@ def _is_enemy_cast_source(source: ActorInfo | None) -> bool:
     return source.type not in {"Player", "Pet", "Unknown"}
 
 
+def _is_enemy_damage_source(
+    source: ActorInfo | None,
+    actors_by_id: dict[int, ActorInfo],
+) -> bool:
+    """承伤来源：含敌方召唤物（WCL 常把尖塔/图腾标成 Pet 且无玩家主人）。"""
+    if source is None:
+        return True
+    if source.is_player:
+        return False
+    if source.is_pet:
+        if source.pet_owner is None:
+            return True
+        owner = actors_by_id.get(source.pet_owner)
+        if owner is None:
+            return True
+        return not owner.is_player
+    return _is_enemy_cast_source(source)
+
+
 def _is_primary_boss_source(source: ActorInfo | None, fight: Fight) -> bool:
     """真正首领（用于多首领 pull 推断）；增援小怪不算。"""
     if source is None:
@@ -798,6 +1068,83 @@ def _defense_cast_events(
             )
         )
     return events
+
+
+def _death_timeline_events(
+    fight: Fight,
+    death_table: Any,
+    actors_by_id: dict[int, ActorInfo],
+    *,
+    player_filter: str | None,
+    category_filter: DefenseCategory | None,
+) -> list[TimelineEvent]:
+    """把 WCL Deaths 表转成玩家泳道事件（致死技能作 ability）。"""
+    if category_filter is not None and category_filter != DefenseCategory.DEATH:
+        return []
+    actors_by_name = {
+        actor.name.casefold(): actor
+        for actor in actors_by_id.values()
+        if actor.is_player and actor.name
+    }
+    events: list[TimelineEvent] = []
+    for entry in _death_table_entries(death_table):
+        if not _death_entry_is_player(entry):
+            continue
+        name = str(entry.get("name") or "未知")
+        if player_filter and name.casefold() != player_filter:
+            continue
+        moment = entry.get("deathTime", entry.get("timestamp"))
+        if moment is None:
+            continue
+        offset = max(0.0, float(moment) - fight.start_time)
+        ability = entry.get("ability") or {}
+        ability_name = ability.get("name") if isinstance(ability, dict) else None
+        actor = actors_by_name.get(name.casefold())
+        entry_type = str(entry.get("type") or "")
+        events.append(
+            TimelineEvent(
+                offset_ms=offset,
+                kind="defense",
+                ability="死亡",
+                ability_id=None,
+                category=category_label(DefenseCategory.DEATH),
+                actor=name,
+                spec=_actor_spec(actor) if actor is not None else spec_label(
+                    entry.get("icon"), entry.get("type")
+                ),
+                actor_class=(
+                    actor.player_class
+                    if actor is not None
+                    else (entry_type if entry_type in _PLAYER_CLASS_TYPES else None)
+                ),
+                description=(
+                    f"致死技能：{ability_name}"
+                    if ability_name
+                    else None
+                ),
+            )
+        )
+    events.sort(key=lambda item: (item.offset_ms, item.actor or "", item.ability))
+    return events
+
+
+def _death_table_entries(table: Any) -> list[dict[str, Any]]:
+    if not isinstance(table, dict):
+        return []
+    if isinstance(table.get("entries"), list):
+        return [item for item in table["entries"] if isinstance(item, dict)]
+    data = table.get("data")
+    if isinstance(data, dict) and isinstance(data.get("entries"), list):
+        return [item for item in data["entries"] if isinstance(item, dict)]
+    return []
+
+
+def _death_entry_is_player(entry: dict[str, Any]) -> bool:
+    entry_type = str(entry.get("type") or "")
+    if entry_type in _PLAYER_CLASS_TYPES or entry_type == "Player":
+        return True
+    icon = str(entry.get("icon") or "")
+    return "-" in icon
 
 
 def _resolve_actor(
@@ -1029,23 +1376,56 @@ def _downsample_samples(
     samples: list[HealthSample],
     limit: int,
 ) -> list[HealthSample]:
+    """按时间均匀取点（保留首尾），避免高密度尾段挤掉中段采样。"""
     if limit <= 0 or len(samples) <= limit:
         return samples
     if limit == 1:
         return [samples[-1]]
-    result: list[HealthSample] = []
-    last_index = len(samples) - 1
+
+    t0 = samples[0].offset_ms
+    t1 = samples[-1].offset_ms
+    if t1 <= t0:
+        # 退化：时刻异常时仍按下标均匀取
+        last_index = len(samples) - 1
+        return [
+            samples[round(index * last_index / (limit - 1))]
+            for index in range(limit)
+        ]
+
+    chosen: list[int] = []
+    cursor = 0
+    n = len(samples)
     for index in range(limit):
-        pos = round(index * last_index / (limit - 1))
-        result.append(samples[pos])
-    # 去重相邻同一时刻
-    deduped: list[HealthSample] = []
-    for sample in result:
-        if deduped and abs(deduped[-1].offset_ms - sample.offset_ms) < 1e-6:
-            deduped[-1] = sample
+        target = t0 + (t1 - t0) * index / (limit - 1)
+        while cursor + 1 < n and samples[cursor + 1].offset_ms <= target:
+            cursor += 1
+        best = cursor
+        if cursor + 1 < n:
+            left_dt = abs(samples[cursor].offset_ms - target)
+            right_dt = abs(samples[cursor + 1].offset_ms - target)
+            if right_dt < left_dt:
+                best = cursor + 1
+        if not chosen or chosen[-1] != best:
+            chosen.append(best)
+        elif best + 1 < n and len(chosen) < limit:
+            # 目标落到同一采样点时尽量向前取一个新点，保住额度
+            chosen.append(best + 1)
+            cursor = max(cursor, best + 1)
+
+    # 强制保留最后一个点
+    if chosen[-1] != n - 1:
+        if len(chosen) < limit:
+            chosen.append(n - 1)
+        else:
+            chosen[-1] = n - 1
+
+    # 去重并保持时间序
+    ordered_unique: list[int] = []
+    for pos in chosen:
+        if ordered_unique and ordered_unique[-1] == pos:
             continue
-        deduped.append(sample)
-    return deduped
+        ordered_unique.append(pos)
+    return [samples[pos] for pos in ordered_unique]
 
 
 def _coerce_float(value: Any) -> float | None:

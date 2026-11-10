@@ -16,7 +16,11 @@ from wcl_analyzer.models import (
     fight_kind_label,
 )
 from wcl_analyzer.spell_meta import icon_url
-from wcl_analyzer.timeline import boss_pull_payload_items, health_series_payload
+from wcl_analyzer.timeline import (
+    boss_pull_payload_items,
+    health_series_payload,
+    summarize_actor_abilities,
+)
 
 _CATEGORY_COLORS = {
     "个减": "#2563eb",
@@ -24,7 +28,10 @@ _CATEGORY_COLORS = {
     "治疗药水": "#059669",
     "爆发药水": "#d97706",
     "治疗饰品": "#db2777",
+    "种族": "#ca8a04",
     "打断": "#0ea5e9",
+    "死亡": "#111827",
+    "战复": "#16a34a",
     "首领技能": "#dc2626",
     "阶段": "#64748b",
 }
@@ -129,6 +136,15 @@ def _payload(analysis: TimelineAnalysis, duration_ms: float) -> dict:
         for pull in boss_pulls
         if pull.get("startOffsetMs") is not None and pull.get("endOffsetMs") is not None
     ]
+    abilities_by_actor = summarize_actor_abilities(analysis.events)
+    health_series = health_series_payload(
+        analysis.health_series,
+        windows=health_windows or None,
+        abilities_by_actor=abilities_by_actor,
+    )
+    for series in health_series:
+        for ability in series.get("abilities") or []:
+            ability["iconUrl"] = icon_url(ability.pop("icon", None) or None) or ""
     return {
         "durationMs": duration_ms,
         "defenseOffsets": defense_offsets,
@@ -136,10 +152,7 @@ def _payload(analysis: TimelineAnalysis, duration_ms: float) -> dict:
         "events": events,
         "bossCds": [_boss_cd_dict(item) for item in analysis.boss_cds],
         "bossPulls": boss_pulls,
-        "healthSeries": health_series_payload(
-            analysis.health_series,
-            windows=health_windows or None,
-        ),
+        "healthSeries": health_series,
         "colors": _CATEGORY_COLORS,
     }
 
@@ -385,16 +398,11 @@ h2 {
   display: flex;
   flex-wrap: nowrap;
   gap: 6px 8px;
-  align-items: flex-start;
+  align-items: center;
   padding: 0 var(--pad) 6px;
   flex-shrink: 0;
   max-height: 64px;
   overflow: auto;
-}
-.boss-ability-bar .hint {
-  margin-right: 2px;
-  flex-shrink: 0;
-  padding-top: 4px;
 }
 .boss-ability-buttons {
   display: flex;
@@ -747,6 +755,7 @@ h2 {
   background: var(--c, #dc2626);
   transform: rotate(45deg);
   border-radius: 1px;
+  cursor: pointer;
 }
 .marker.boss.has-icon {
   width: var(--icon-s);
@@ -888,17 +897,165 @@ h2 {
 #tooltip.boss-tip .t-desc {
   text-align: left;
 }
+#tooltip.hp-tip {
+  display: none;
+  flex-direction: column;
+  width: min(420px, calc(100vw - 24px));
+  max-width: min(420px, calc(100vw - 24px));
+  max-height: min(82vh, 640px);
+  min-width: 240px;
+  padding: 0;
+  overflow: hidden;
+  text-align: left;
+  pointer-events: auto;
+  z-index: 40;
+}
+#tooltip.hp-tip.is-open {
+  display: flex;
+}
+#tooltip.hp-tip .hp-tip-head {
+  flex: 0 0 auto;
+  padding: 10px 12px 8px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.28);
+  background: #0f172a;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+#tooltip.hp-tip .hp-tip-head .t-name {
+  display: block;
+  font-weight: 650;
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+#tooltip.hp-tip .hp-tip-head .t-meta {
+  margin-top: 0;
+  font-size: 11px;
+}
+#tooltip.hp-tip .hp-tip-hint {
+  color: #64748b;
+  font-size: 11px;
+  margin-top: 4px;
+}
+#tooltip.hp-tip .hp-tip-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 4px 12px 12px;
+  overscroll-behavior: contain;
+}
+#tooltip.hp-tip .hp-ability {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 8px 0;
+  border-top: 1px solid rgba(148, 163, 184, 0.22);
+}
+#tooltip.hp-tip .hp-ability:first-child {
+  border-top: none;
+  padding-top: 6px;
+}
+#tooltip.hp-tip .hp-ability .t-icon {
+  float: none;
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  margin: 0;
+}
+#tooltip.hp-tip .hp-ability-body {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+#tooltip.hp-tip .hp-ability-name {
+  font-weight: 600;
+  font-size: 12px;
+}
+#tooltip.hp-tip .hp-ability-cast {
+  color: #94a3b8;
+  font-size: 11px;
+  margin-top: 2px;
+}
+#tooltip.hp-tip .hp-ability .t-desc {
+  margin-top: 4px;
+  padding-top: 0;
+  border-top: none;
+  max-width: none;
+  font-size: 11px;
+  color: #cbd5e1;
+}
 .empty {
   padding: 24px var(--pad);
   color: var(--muted);
 }
-.cd-section {
-  padding: 8px var(--pad) 12px;
-  flex-shrink: 0;
-  max-height: 26vh;
+.toolbar button.cd-open-btn {
+  appearance: none;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--ink);
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  line-height: 1.3;
+}
+.toolbar button.cd-open-btn:hover {
+  background: #f1f5f9;
+}
+.cd-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.cd-modal[hidden] { display: none !important; }
+.cd-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+}
+.cd-modal-panel {
+  position: relative;
+  z-index: 1;
+  width: min(920px, 100%);
+  max-height: min(78vh, 820px);
   overflow: auto;
-  border-top: 1px solid var(--line);
   background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 18px 48px rgba(15, 23, 42, 0.28);
+  padding: 16px 18px 18px;
+}
+.cd-modal-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.cd-modal-head h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 650;
+  flex: 1;
+}
+.cd-modal-close {
+  appearance: none;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--muted);
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.cd-modal-close:hover {
+  background: #f1f5f9;
+  color: var(--ink);
 }
 .cd-note {
   color: var(--muted);
@@ -937,9 +1094,10 @@ h2 {
 .cd-empty { color: var(--muted); }
 .hp-panel {
   display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  padding: 10px var(--pad) 12px;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  padding: 8px var(--pad) 10px;
   flex-shrink: 0;
   max-height: 280px;
   overflow: auto;
@@ -965,11 +1123,14 @@ h2 {
 }
 .hp-bars {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
+  flex-wrap: wrap;
   align-items: flex-start;
-  gap: 8px;
-  flex: 0 0 auto;
+  gap: 10px 12px;
+  flex: 1 1 100%;
+  width: 100%;
   min-width: 0;
+  padding-top: 2px;
 }
 .hp-item {
   position: relative;
@@ -978,6 +1139,8 @@ h2 {
   height: 28px;
   background: #111;
   box-shadow: inset 0 0 0 1px #000;
+  flex: 0 0 auto;
+  cursor: help;
 }
 .hp-item.boss { margin-top: 8px; }
 .hp-item.boss::before {
@@ -1107,6 +1270,10 @@ _JS = r"""
   const tooltip = document.getElementById("tooltip");
   const cdBody = document.getElementById("cd-body");
   const cdTitle = document.getElementById("cd-title");
+  const cdModal = document.getElementById("cd-modal");
+  const cdOpenBtn = document.getElementById("cd-open-btn");
+  const cdCloseBtn = document.getElementById("cd-close-btn");
+  const cdBackdrop = document.getElementById("cd-modal-backdrop");
   const pullWrap = document.getElementById("boss-pull-wrap");
   const pullButtons = document.getElementById("boss-pull-buttons");
   const abilityWrap = document.getElementById("boss-ability-wrap");
@@ -1377,6 +1544,17 @@ _JS = r"""
     });
   }
 
+  function seekToTime(offsetMs, opts) {
+    // 同步 playhead / 血条；默认同时把时间轴滚到该时刻
+    const options = opts || {};
+    scrubMs = clampScrub(offsetMs);
+    updatePlayhead();
+    updateHpPanel();
+    if (options.scroll !== false) {
+      scrollToCast(scrubMs);
+    }
+  }
+
   function navigateAbilityCast(key) {
     const times = abilityCastTimes(key);
     if (!times.length) return;
@@ -1394,7 +1572,7 @@ _JS = r"""
     });
     refreshAbilityCountLabels();
     applyAbilityHighlight();
-    scrollToCast(focusedCastMs);
+    seekToTime(focusedCastMs);
   }
 
   function clearAbilityGuides() {
@@ -1666,6 +1844,7 @@ _JS = r"""
       item.appendChild(name);
       item.appendChild(bar);
       item.appendChild(pct);
+      bindHpAbilityTip(item, series);
       hpBars.appendChild(item);
     });
   }
@@ -1719,12 +1898,14 @@ _JS = r"""
       fill.style.width = pct.toFixed(1) + "%";
       pctEl.textContent = Math.round(pct) + "%";
       el.classList.toggle("dead", pct <= 0.05);
-      let title = (series.name || "") + " · " + pct.toFixed(1) + "%";
+      el.dataset.hpPct = String(Math.round(pct));
       if (sample.current != null && sample.max != null) {
-        title += " (" + Math.round(sample.current).toLocaleString() +
-          " / " + Math.round(sample.max).toLocaleString() + ")";
+        el.dataset.hpCurrent = String(Math.round(sample.current));
+        el.dataset.hpMax = String(Math.round(sample.max));
+      } else {
+        delete el.dataset.hpCurrent;
+        delete el.dataset.hpMax;
       }
-      el.title = title;
     });
   }
 
@@ -2021,6 +2202,24 @@ _JS = r"""
       el.appendChild(img);
     }
     bindTip(el, ev);
+    el.addEventListener("click", function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      const key = abilityKey(ev);
+      const times = abilityCastTimes(key);
+      selectedAbilityId = key;
+      abilityNavIndex = times.indexOf(ev.offsetMs);
+      if (abilityNavIndex < 0) {
+        abilityNavIndex = nearestCastIndex(times, ev.offsetMs);
+      }
+      focusedCastMs = ev.offsetMs;
+      abilityButtons.querySelectorAll(".boss-ability-btn").forEach(function (btn) {
+        btn.classList.toggle("active", btn.dataset.abilityId === selectedAbilityId);
+      });
+      refreshAbilityCountLabels();
+      applyAbilityHighlight();
+      seekToTime(ev.offsetMs);
+    });
     wrap.appendChild(el);
     track.appendChild(wrap);
   }
@@ -2043,10 +2242,42 @@ _JS = r"""
     return name.length > 8 ? name.slice(0, 7) + "…" : name;
   }
 
+  let hpTipHideTimer = null;
+  let hpTipPinned = false;
+
+  function clearHpTipHide() {
+    if (hpTipHideTimer != null) {
+      clearTimeout(hpTipHideTimer);
+      hpTipHideTimer = null;
+    }
+  }
+
+  function hideHpAbilityTip() {
+    clearHpTipHide();
+    hpTipPinned = false;
+    tooltip.classList.remove("is-open");
+    tooltip.classList.remove("hp-tip");
+    tooltip.classList.remove("boss-tip");
+    tooltip.style.display = "none";
+    tooltip.style.pointerEvents = "";
+  }
+
+  function scheduleHpTipHide() {
+    clearHpTipHide();
+    hpTipHideTimer = setTimeout(function () {
+      if (hpTipPinned) return;
+      hideHpAbilityTip();
+    }, 180);
+  }
+
   function bindTip(el, ev) {
     el.addEventListener("mouseenter", function (e) {
+      hideHpAbilityTip();
       tooltip.style.display = "block";
+      tooltip.style.pointerEvents = "none";
       tooltip.classList.add("boss-tip");
+      tooltip.classList.remove("hp-tip");
+      tooltip.classList.remove("is-open");
       tooltip.innerHTML = tipHtml(ev);
       moveTip(e);
     });
@@ -2054,7 +2285,111 @@ _JS = r"""
     el.addEventListener("mouseleave", function () {
       tooltip.style.display = "none";
       tooltip.classList.remove("boss-tip");
+      tooltip.classList.remove("hp-tip");
+      tooltip.classList.remove("is-open");
     });
+  }
+
+  function bindHpAbilityTip(el, series) {
+    el.addEventListener("mouseenter", function (e) {
+      clearHpTipHide();
+      hpTipPinned = false;
+      tooltip.classList.remove("boss-tip");
+      tooltip.classList.add("hp-tip");
+      tooltip.classList.add("is-open");
+      tooltip.style.display = "flex";
+      tooltip.style.pointerEvents = "auto";
+      tooltip.innerHTML = hpAbilityTipHtml(series, el);
+      placeHpAbilityTip(e, el);
+    });
+    el.addEventListener("mouseleave", function () {
+      scheduleHpTipHide();
+    });
+  }
+
+  if (tooltip) {
+    tooltip.addEventListener("mouseenter", function () {
+      if (!tooltip.classList.contains("hp-tip")) return;
+      clearHpTipHide();
+      hpTipPinned = true;
+    });
+    tooltip.addEventListener("mouseleave", function () {
+      if (!tooltip.classList.contains("hp-tip")) return;
+      hpTipPinned = false;
+      scheduleHpTipHide();
+    });
+  }
+
+  function hpAbilityTipHtml(series, el) {
+    const abilities = series.abilities || [];
+    let html = '<div class="hp-tip-head">';
+    html += '<span class="t-name">' + esc(series.name || "未知单位") + "</span>";
+    const pctText = el && el.dataset.hpPct ? el.dataset.hpPct + "%" : "";
+    if (pctText) {
+      let meta = "当前血量 " + pctText;
+      if (el.dataset.hpCurrent && el.dataset.hpMax) {
+        meta += " · " + Number(el.dataset.hpCurrent).toLocaleString() +
+          " / " + Number(el.dataset.hpMax).toLocaleString();
+      }
+      html += '<div class="t-meta">' + esc(meta) + "</div>";
+    }
+    if (abilities.length) {
+      html += '<div class="hp-tip-hint">共 ' + abilities.length +
+        " 个技能 · 可滚动查看</div>";
+    }
+    html += "</div><div class=\"hp-tip-body\">";
+    if (!abilities.length) {
+      html += '<div class="t-meta">本场未见该单位施法</div></div>';
+      return html;
+    }
+    abilities.forEach(function (ab) {
+      html += '<div class="hp-ability">';
+      if (ab.iconUrl) {
+        html += '<img class="t-icon" src="' + escAttr(ab.iconUrl) + '" alt="">';
+      }
+      html += '<div class="hp-ability-body">';
+      html += '<div class="hp-ability-name">' + esc(ab.ability || "（未知）") + "</div>";
+      const castLabel = String(ab.castLabel || "").trim();
+      if (castLabel) {
+        html += '<div class="hp-ability-cast">施法时间: ' + esc(castLabel) + "</div>";
+      }
+      const desc = cleanTipDescription(ab);
+      if (desc) {
+        html += '<div class="t-desc">' + esc(desc) + "</div>";
+      }
+      html += "</div></div>";
+    });
+    html += "</div>";
+    return html;
+  }
+
+  function placeHpAbilityTip(e, anchorEl) {
+    const tipWidth = tooltip.offsetWidth || 360;
+    const tipHeight = tooltip.offsetHeight || 240;
+    const margin = 10;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    let x = e.clientX + 16;
+    let y = e.clientY + 16;
+    // 优先放在锚点下方 / 右侧，避免贴边裁切
+    if (anchorEl && anchorEl.getBoundingClientRect) {
+      const rect = anchorEl.getBoundingClientRect();
+      x = rect.left;
+      y = rect.bottom + 8;
+      if (y + tipHeight > vh - margin) {
+        y = Math.max(margin, rect.top - tipHeight - 8);
+      }
+      if (x + tipWidth > vw - margin) {
+        x = Math.max(margin, vw - tipWidth - margin);
+      }
+    } else {
+      if (x + tipWidth > vw - margin) x = Math.max(margin, e.clientX - tipWidth - 16);
+      if (y + tipHeight > vh - margin) y = Math.max(margin, e.clientY - tipHeight - 16);
+    }
+    x = Math.min(Math.max(margin, x), Math.max(margin, vw - tipWidth - margin));
+    y = Math.min(Math.max(margin, y), Math.max(margin, vh - Math.min(tipHeight, vh - 2 * margin) - margin));
+    tooltip.style.left = x + "px";
+    tooltip.style.top = y + "px";
   }
 
   function tipHtml(ev) {
@@ -2064,8 +2399,12 @@ _JS = r"""
       html += '<img class="t-icon" src="' + escAttr(ev.iconUrl) + '" alt="">';
     }
     html += '<span class="t-name">' + esc(ev.ability || "（未知）") + "</span>";
+    if (ev.category === "死亡" || ev.category === "战复") {
+      html += '<div class="t-meta">' + esc(ev.category) + "</div>";
+    }
     if (ev.actor) {
-      html += '<div class="t-caster">施法者: ' + esc(ev.actor) + "</div>";
+      const actorLabel = ev.category === "死亡" ? "玩家: " : "施法者: ";
+      html += '<div class="t-caster">' + actorLabel + esc(ev.actor) + "</div>";
     }
     if (ev.durationMs && ev.durationMs > 0) {
       html += '<div class="t-duration">持续: ' +
@@ -2134,8 +2473,10 @@ _JS = r"""
   }
 
   function moveTip(e) {
-    const x = Math.min(e.clientX + 14, window.innerWidth - 360);
-    const y = Math.min(e.clientY + 14, window.innerHeight - 220);
+    const tipWidth = tooltip.offsetWidth || 300;
+    const tipHeight = tooltip.offsetHeight || 160;
+    const x = Math.min(e.clientX + 14, Math.max(8, window.innerWidth - tipWidth - 12));
+    const y = Math.min(e.clientY + 14, Math.max(8, window.innerHeight - tipHeight - 12));
     tooltip.style.left = x + "px";
     tooltip.style.top = y + "px";
   }
@@ -2199,6 +2540,7 @@ _JS = r"""
   }
 
   function paintCds(rows) {
+    if (!cdBody) return;
     if (!rows.length) {
       cdBody.innerHTML = '<p class="cd-empty">本段没有可汇总的首领技能施法。</p>';
       return;
@@ -2223,6 +2565,34 @@ _JS = r"""
     html += "</tbody></table>";
     cdBody.innerHTML = html;
   }
+
+  function openCdModal() {
+    if (!cdModal) return;
+    paintCds(summarizeBossCds(visibleEvents));
+    cdModal.hidden = false;
+    if (cdCloseBtn) cdCloseBtn.focus();
+  }
+
+  function closeCdModal() {
+    if (!cdModal) return;
+    cdModal.hidden = true;
+    if (cdOpenBtn) cdOpenBtn.focus();
+  }
+
+  if (cdOpenBtn) {
+    cdOpenBtn.addEventListener("click", openCdModal);
+  }
+  if (cdCloseBtn) {
+    cdCloseBtn.addEventListener("click", closeCdModal);
+  }
+  if (cdBackdrop) {
+    cdBackdrop.addEventListener("click", closeCdModal);
+  }
+  document.addEventListener("keydown", function (ev) {
+    if (ev.key === "Escape" && cdModal && !cdModal.hidden) {
+      closeCdModal();
+    }
+  });
 })();
 """
 
@@ -2246,6 +2616,7 @@ _HTML_TEMPLATE = """<!DOCTYPE html>
 <div class="toolbar">
   <span class="hint">时间轴含首领与小怪技能；在顶部时间标尺或蓝色滑块上拖动可查看对应时刻血量。左侧玩家名横向滚动时固定。</span>
   <div class="toolbar-options">
+    <button type="button" class="cd-open-btn" id="cd-open-btn">首领技能间隔</button>
     <label class="opt">
       <input type="checkbox" id="opt-interrupts">
       显示打断
@@ -2262,7 +2633,6 @@ _HTML_TEMPLATE = """<!DOCTYPE html>
   <div id="boss-pull-buttons"></div>
 </div>
 <div class="boss-ability-bar" id="boss-ability-wrap" hidden>
-  <span class="hint">技能定位（旁注总次数；点击后显示第几次 / 再点下一次）：</span>
   <div id="boss-ability-buttons" class="boss-ability-buttons"></div>
 </div>
 <div class="board-wrap">
@@ -2273,11 +2643,17 @@ _HTML_TEMPLATE = """<!DOCTYPE html>
     </div>
   </div>
 </div>
-<section class="cd-section">
-  <h2 id="cd-title">首领技能间隔（本场实测）</h2>
-  <p class="cd-note">推算 CD 取相邻施法间隔的中位数；受阶段 / 能量 / 机制影响，未必等于技能真实冷却。大秘多首领可上方切换单个首领时间窗。点击技能按钮：跳到离当前视野最近的一次施放（平滑滚动）；再点同一按钮跳到下一次，到末次后回到第一次。</p>
-  <div id="cd-body"></div>
-</section>
+<div class="cd-modal" id="cd-modal" hidden>
+  <div class="cd-modal-backdrop" id="cd-modal-backdrop"></div>
+  <div class="cd-modal-panel" role="dialog" aria-modal="true" aria-labelledby="cd-title">
+    <div class="cd-modal-head">
+      <h2 id="cd-title">首领技能间隔（本场实测）</h2>
+      <button type="button" class="cd-modal-close" id="cd-close-btn" aria-label="关闭">×</button>
+    </div>
+    <p class="cd-note">推算 CD 取相邻施法间隔的中位数；受阶段 / 能量 / 机制影响，未必等于技能真实冷却。大秘多首领可上方切换单个首领时间窗。</p>
+    <div id="cd-body"></div>
+  </div>
+</div>
 <div id="tooltip" role="tooltip"></div>
 <script>
 window.TIMELINE_DATA = __DATA_JSON__;

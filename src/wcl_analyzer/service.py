@@ -33,6 +33,8 @@ def build_timeline_analysis(
         defense_events=payload["defense_events"],
         boss_events=payload["boss_events"],
         health_events=payload.get("health_events") or [],
+        damage_taken_events=payload.get("damage_taken_events") or [],
+        death_table=payload.get("death_table"),
         player=player,
         category=category,
     )
