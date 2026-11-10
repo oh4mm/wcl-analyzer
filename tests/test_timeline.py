@@ -105,6 +105,53 @@ def test_lookup_defense_by_id_and_name() -> None:
     assert lookup_defense(name="Frenzied Regeneration") is None
 
 
+def test_boss_lane_ignores_environment_amz_aura() -> None:
+    """玩家反魔法领域的 Environment 光环生效不应出现在首领轴。"""
+    fight = _fight()
+    abilities = {
+        451112: "刺骨尖啸",
+        51052: "Anti-Magic Zone",
+        145629: "Anti-Magic Zone",
+    }
+    analysis = analyze_timeline(
+        fight,
+        actors=_actors()
+        + (
+            ActorInfo(id=20, name="神奇的阿诺", type="Player", sub_type="DeathKnight"),
+        ),
+        abilities=abilities,
+        defense_events=[
+            {
+                "timestamp": 130_000,
+                "type": "cast",
+                "sourceID": 20,
+                "abilityGameID": 51052,
+            },
+        ],
+        boss_events=[
+            {
+                "timestamp": 130_000,
+                "type": "cast",
+                "sourceID": 1,
+                "abilityGameID": 451112,
+            },
+            # WCL 把 AMZ 光环记成 Environment(sourceID=-1) 对玩家的 cast
+            {
+                "timestamp": 130_009,
+                "type": "cast",
+                "sourceID": -1,
+                "targetID": 20,
+                "abilityGameID": 145629,
+            },
+        ],
+    )
+    boss = [event for event in analysis.events if event.kind == "boss"]
+    defense = [event for event in analysis.events if event.kind == "defense"]
+    assert [event.ability_id for event in boss] == [451112]
+    assert not any(event.ability_id == 145629 for event in boss)
+    assert any(event.ability_id == 51052 and event.actor == "神奇的阿诺" for event in defense)
+
+
 def test_analyze_timeline_sorts_filters_and_categorizes() -> None:
     fight = _fight()
     abilities = {
@@ -719,6 +766,11 @@ def test_analyze_timeline_includes_health_series_and_html_scrubber(tmp_path) -> 
     assert "pickHealthSeriesForView" in html
     assert "seriesOverlapsView" in html
     assert "hp-empty" in html
+    # 敌方血条：红底黑槽、名字和整数百分比压在条内，首领顶上有金色星标
+    assert "#b3473e" in html
+    assert "#edcd68" in html
+    assert "hp-item.boss::before" in html
+    assert "Math.round(pct)" in html
     # shownHealthSeries 必须在首次 setupHpPanel 调用之前声明，避免 TDZ 崩掉整页
     js = html.split("<script>", 2)[-1]
     decl = js.index("let shownHealthSeries")

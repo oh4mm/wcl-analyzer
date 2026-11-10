@@ -304,7 +304,8 @@ DEFENSE_ABILITIES: tuple[DefenseAbility, ...] = (
 )
 
 # 近战 / 自动射击等，不当作首领技能波次标记
-IGNORED_BOSS_ABILITY_IDS = frozenset({1, 75, 6603})
+# 145629：反魔法领域光环生效（玩家 AMZ 的 Environment「施法」），不是敌方技能
+IGNORED_BOSS_ABILITY_IDS = frozenset({1, 75, 6603, 145629})
 IGNORED_BOSS_ABILITY_NAMES = frozenset(
     {
         "melee",
