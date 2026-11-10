@@ -179,14 +179,14 @@ def build_health_series(
                 )
                 continue
         series.append(sample)
-        if len(series) > _HEALTH_MAX_SAMPLES:
-            # 均匀抽稀到上限一半，再继续追加
-            buckets[key] = _downsample_samples(series, _HEALTH_MAX_SAMPLES // 2)
 
     items: list[HealthSeries] = []
     for key, samples in buckets.items():
         if not samples:
             continue
+        # 整段结束后按时间均匀抽稀。流式按「下标」抽稀会偏向后期密集伤害，
+        # 把中段血量点挤掉，拖动时只能在 100%→低血之间瞎插值。
+        samples = _downsample_samples(samples, _HEALTH_MAX_SAMPLES)
         actor_id, instance = key
         name, is_boss = meta[key]
         localized = short_encounter_name(name)
@@ -1029,23 +1029,56 @@ def _downsample_samples(
     samples: list[HealthSample],
     limit: int,
 ) -> list[HealthSample]:
+    """按时间均匀取点（保留首尾），避免高密度尾段挤掉中段采样。"""
     if limit <= 0 or len(samples) <= limit:
         return samples
     if limit == 1:
         return [samples[-1]]
-    result: list[HealthSample] = []
-    last_index = len(samples) - 1
+
+    t0 = samples[0].offset_ms
+    t1 = samples[-1].offset_ms
+    if t1 <= t0:
+        # 退化：时刻异常时仍按下标均匀取
+        last_index = len(samples) - 1
+        return [
+            samples[round(index * last_index / (limit - 1))]
+            for index in range(limit)
+        ]
+
+    chosen: list[int] = []
+    cursor = 0
+    n = len(samples)
     for index in range(limit):
-        pos = round(index * last_index / (limit - 1))
-        result.append(samples[pos])
-    # 去重相邻同一时刻
-    deduped: list[HealthSample] = []
-    for sample in result:
-        if deduped and abs(deduped[-1].offset_ms - sample.offset_ms) < 1e-6:
-            deduped[-1] = sample
+        target = t0 + (t1 - t0) * index / (limit - 1)
+        while cursor + 1 < n and samples[cursor + 1].offset_ms <= target:
+            cursor += 1
+        best = cursor
+        if cursor + 1 < n:
+            left_dt = abs(samples[cursor].offset_ms - target)
+            right_dt = abs(samples[cursor + 1].offset_ms - target)
+            if right_dt < left_dt:
+                best = cursor + 1
+        if not chosen or chosen[-1] != best:
+            chosen.append(best)
+        elif best + 1 < n and len(chosen) < limit:
+            # 目标落到同一采样点时尽量向前取一个新点，保住额度
+            chosen.append(best + 1)
+            cursor = max(cursor, best + 1)
+
+    # 强制保留最后一个点
+    if chosen[-1] != n - 1:
+        if len(chosen) < limit:
+            chosen.append(n - 1)
+        else:
+            chosen[-1] = n - 1
+
+    # 去重并保持时间序
+    ordered_unique: list[int] = []
+    for pos in chosen:
+        if ordered_unique and ordered_unique[-1] == pos:
             continue
-        deduped.append(sample)
-    return deduped
+        ordered_unique.append(pos)
+    return [samples[pos] for pos in ordered_unique]
 
 
 def _coerce_float(value: Any) -> float | None:

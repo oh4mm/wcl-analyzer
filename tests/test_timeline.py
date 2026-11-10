@@ -614,6 +614,60 @@ def test_fetch_timeline_inputs_forwards_ability_icons() -> None:
     assert health_calls[0].get("include_resources") is True
 
 
+def test_build_health_series_keeps_midfight_pct_despite_dense_tail() -> None:
+    """后期伤害再密，也不能把中段血量采样挤掉（否则拖动时只能 100%→低血插值）。"""
+    fight = _fight(start_time=0, end_time=300_000)
+    actors = {
+        1: ActorInfo(id=1, name="加瓦兹特", type="NPC", sub_type="NPC"),
+        10: ActorInfo(id=10, name="法师甲", type="Player", sub_type="Mage"),
+    }
+    max_hp = 1_000_000
+    events: list[dict] = []
+    # 前 200s：每秒 1 点，血量 100%→20%
+    for second in range(0, 200):
+        pct = 100.0 - second * 0.4
+        events.append(
+            {
+                "timestamp": second * 1_000,
+                "type": "damage",
+                "sourceID": 10,
+                "targetID": 1,
+                "hitPoints": int(max_hp * pct / 100.0),
+                "maxHitPoints": max_hp,
+            }
+        )
+    # 后 100s：每 10ms 1 点（极密尾段），血量 20%→0%
+    for index in range(0, 10_000):
+        pct = 20.0 - index * 0.002
+        events.append(
+            {
+                "timestamp": 200_000 + index * 10,
+                "type": "damage",
+                "sourceID": 10,
+                "targetID": 1,
+                "hitPoints": max(0, int(max_hp * pct / 100.0)),
+                "maxHitPoints": max_hp,
+            }
+        )
+    series = build_health_series(fight, events, actors)
+    boss = next(item for item in series if item.id == 1)
+    assert len(boss.samples) <= 240
+
+    def pct_at(offset_ms: float) -> float:
+        prev = boss.samples[0]
+        for sample in boss.samples:
+            if sample.offset_ms <= offset_ms:
+                prev = sample
+            else:
+                break
+        return prev.pct
+
+    # 中段应仍接近真实 ~60% / ~40%，不能被尾段抽稀挤成接近 100% 或乱插值
+    assert 55.0 <= pct_at(100_000) <= 65.0
+    assert 35.0 <= pct_at(150_000) <= 45.0
+    assert pct_at(299_000) <= 5.0
+
+
 def test_build_health_series_samples_boss_and_add_pct() -> None:
     fight = _fight()
     actors = {
